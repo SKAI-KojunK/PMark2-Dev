@@ -54,4 +54,6 @@ Thumbs.db
 
 # Logs
 *.log
-logs/ 
+logs/ venv/
+backend/venv/
+.venv/
