@@ -109,10 +109,18 @@ def get_local_ip():
         return "localhost"
 
 def main():
-    port = find_free_port(3000)
-    if not port:
-        print("❌ 사용 가능한 포트를 찾을 수 없습니다.")
-        return
+    # 3001번 포트를 우선적으로 사용
+    port = 3001
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('0.0.0.0', port))
+    except OSError:
+        print(f"❌ 포트 {port}가 이미 사용 중입니다. 다른 포트를 시도합니다.")
+        port = find_free_port(3002)
+        if not port:
+            print("❌ 사용 가능한 포트를 찾을 수 없습니다.")
+            return
     
     local_ip = get_local_ip()
     

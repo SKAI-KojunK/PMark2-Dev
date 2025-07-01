@@ -1,426 +1,334 @@
-# PMark1 - 대화형 작업요청 챗봇 시스템
+# PMark1 AI Assistant
 
-PMark1은 공정 관리 및 작업요청을 지원하는 AI 기반 대화형 챗봇 시스템입니다.
+설비관리 시스템을 위한 자연어 기반 AI 작업요청 생성 어시스턴트
 
-## 🆕 새로운 기능 (대화형 챗봇)
+## 📋 프로젝트 개요
 
-### ✨ 주요 특징
-- **멀티턴 대화**: 자연스러운 대화형 인터페이스
-- **스마트 분석**: 공정명, 위치, 설비, 상태 4가지 항목 자동 추출
-- **실시간 완전성 게이지**: 타이핑 중 7-segment 게이지로 정보 충실도 표시
-- **인텔리전트 추천**: 부족한 정보를 AI가 추정하여 추천 제공
-- **편집 가능한 선택지**: 추천 결과를 사용자가 수정/편집 가능
-- **AI 작업명/상세 생성**: 선택된 추천으로 작업명과 상세내용 자동 생성
-- **다단계 작업 완성**: 추천 선택 → AI 생성 → 사용자 편집 → 최종 확정
-- **네트워크 접속 지원**: 동료들과 공유 가능한 네트워크 접속
-- **멀티 사용자 동시 접속**: 여러 명이 동시에 사용 가능
+PMark1은 사용자의 자연어 입력을 분석하여 설비관리 시스템의 작업요청을 자동으로 생성하는 AI 어시스턴트입니다. OpenAI GPT-4o를 활용하여 한국어-영어 혼용 표현, 오타, 띄어쓰기 오류 등도 정확하게 이해하고 표준화된 작업요청을 생성합니다.
 
-### 🎯 작동 방식
-1. **정보 입력**: 사용자가 자연어로 작업 관련 정보 입력
-2. **실시간 분석**: 타이핑 중 7-segment 게이지로 완전성 표시
-3. **AI 분석**: 4가지 핵심 항목(공정명, 위치, 설비, 상태) 자동 추출
-4. **완전성 판단**:
-   - 4개 항목 모두 있음: 즉시 추천 제공
-   - 3개 항목: 빠진 항목 추정하여 추천 제공
-   - 2개 이하: 추가 정보 요청
-5. **추천 선택**: 동그라미 버튼으로 선택, 내용 편집 가능
-6. **"작성완료"**: AI가 작업명과 작업상세를 생성
-7. **편집 및 확정**: 사용자가 내용 수정 후 "확정" 버튼으로 최종 완성
+### 주요 기능
+- **자연어 입력 파싱**: 사용자의 자연어 입력을 구조화된 데이터로 변환
+- **LLM 기반 용어 정규화**: 다양한 표현을 표준 용어로 정규화
+- **유사 작업 추천**: 기존 작업 이력을 기반으로 유사한 작업 추천
+- **작업상세 자동 생성**: LLM을 활용한 작업명과 상세 자동 생성
+- **최종 작업요청 완성**: 완성된 작업요청을 시스템에 등록
 
-## 🚀 빠른 시작
+## 🏗️ 시스템 아키텍처
 
-### 1. 백엔드 서버 시작
+### 전체 구조
+```
+PMark1-Dev/
+├── backend/                 # FastAPI 백엔드
+│   ├── app/
+│   │   ├── models.py        # 데이터 모델 정의
+│   │   ├── config.py        # 설정 관리
+│   │   ├── database.py      # 데이터베이스 관리
+│   │   ├── agents/
+│   │   │   └── parser.py    # 입력 파서
+│   │   ├── logic/
+│   │   │   ├── normalizer.py # LLM 정규화 엔진
+│   │   │   └── recommender.py # 추천 엔진
+│   │   └── api/
+│   │       ├── chat.py      # 채팅 API
+│   │       └── work_details.py # 작업상세 API
+│   └── main.py              # FastAPI 앱 진입점
+├── frontend/                # React 프론트엔드
+└── docs/                    # 문서
+```
+
+### 핵심 컴포넌트
+
+#### 1. 입력 파서 (InputParser)
+- **파일**: `backend/app/agents/parser.py`
+- **담당자**: AI/ML 엔지니어, 백엔드 개발자
+- **기능**: 
+  - 사용자 입력의 시나리오 판단 (S1: 자연어 요청, S2: ITEMNO 요청)
+  - LLM을 활용한 정보 추출 (위치, 설비유형, 현상코드, 우선순위)
+  - 추출된 용어의 LLM 정규화
+- **수정 가이드**:
+  - 새로운 시나리오 추가 시 `_determine_scenario()` 수정
+  - 추출 필드 변경 시 `_create_scenario_1_prompt()` 수정
+  - 정규화 로직은 `logic/normalizer.py`와 연동
+
+#### 2. LLM 정규화 엔진 (LLMNormalizer)
+- **파일**: `backend/app/logic/normalizer.py`
+- **담당자**: AI/ML 엔지니어
+- **기능**:
+  - 자연어 입력을 표준 용어로 정규화
+  - 한국어-영어 혼용 표현, 오타, 띄어쓰기 오류 처리
+  - 신뢰도 점수 기반 정규화 품질 제어
+- **수정 가이드**:
+  - `standard_terms` 사전은 실제 DB 데이터와 일치해야 함
+  - 새로운 카테고리 추가 시 `standard_terms`에 추가
+  - 프롬프트 수정으로 정규화 품질 향상 가능
+
+#### 3. 추천 엔진 (RecommendationEngine)
+- **파일**: `backend/app/logic/recommender.py`
+- **담당자**: AI/ML 엔지니어, 백엔드 개발자
+- **기능**:
+  - 파싱된 입력을 기반으로 유사한 작업 검색
+  - 유사도 점수 계산 및 정렬
+  - LLM을 활용한 작업명/상세 자동 생성
+- **수정 가이드**:
+  - 추천 알고리즘 개선 시 `get_recommendations()` 수정
+  - 유사도 점수 임계값 조정으로 추천 품질 제어
+  - 새로운 추천 기준 추가 가능
+
+#### 4. 데이터베이스 관리 (DatabaseManager)
+- **파일**: `backend/app/database.py`
+- **담당자**: 백엔드 개발자, 데이터베이스 관리자
+- **기능**:
+  - SQLite 데이터베이스 관리
+  - 유사한 알림 데이터 검색
+  - LLM 정규화 엔진과 연동한 정확한 매칭
+- **수정 가이드**:
+  - DB 스키마 변경 시 `_init_database()` 수정
+  - 새로운 검색 조건 추가 시 `search_similar_notifications()` 수정
+  - 성능 최적화를 위해 인덱스 추가 고려
+
+#### 5. 채팅 API (Chat API)
+- **파일**: `backend/app/api/chat.py`
+- **담당자**: 백엔드 개발자, API 개발자
+- **기능**:
+  - 사용자 입력 처리 및 파싱
+  - 시나리오별 응답 생성
+  - 추천 목록 제공
+- **수정 가이드**:
+  - 새로운 시나리오 추가 시 `_handle_scenario()` 수정
+  - 응답 메시지 형식 변경 시 `_create_response_message()` 수정
+  - 에러 처리 로직 개선 가능
+
+#### 6. 작업상세 API (Work Details API)
+- **파일**: `backend/app/api/work_details.py`
+- **담당자**: 백엔드 개발자, API 개발자
+- **기능**:
+  - 선택된 추천 항목에 대한 작업상세 생성
+  - 최종 작업요청 완성 및 저장
+- **수정 가이드**:
+  - LLM 프롬프트 수정으로 생성 품질 향상 가능
+  - 외부 시스템 연동 로직 추가 필요
+  - 트랜잭션 처리 및 롤백 로직 구현 필요
+
+## 🚀 설치 및 실행
+
+### 사전 요구사항
+- Python 3.8+
+- Node.js 16+
+- OpenAI API 키
+
+### 1. 백엔드 설정
+
 ```bash
+# 백엔드 디렉토리로 이동
 cd backend
-python run.py
-```
-**출력 예시:**
-```
-🚀 PMark1 Backend Server Starting...
-🌐 Server running on:
-   • Local:    http://localhost:5001
-   • Network:  http://192.168.0.60:5001
-📡 Other computers can access: http://192.168.0.60:5001
-```
 
-### 2. 프론트엔드 서버 시작
-```bash
-python start_frontend.py
-```
-**출력 예시:**
-```
-🚀 PMark1 Frontend Server Starting...
-📁 Current directory: /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark1
-🌐 Server running on:
-   • Local:    http://localhost:3000
-   • Network:  http://192.168.0.60:3000
-📡 Other computers can access:
-   • Chatbot:     http://192.168.0.60:3000/
-   • Prototype:   http://192.168.0.60:3000/old
-👥 Multi-user support: ✅ ENABLED
-🛑 Press Ctrl+C to stop the server
-✅ chatbot.html found
-🔥 Server ready for multiple concurrent users!
+# 가상환경 생성 및 활성화
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 의존성 설치
+pip install -r requirements.txt
+
+# 환경변수 설정
+cp ../env.example .env
+# .env 파일에서 OpenAI API 키 설정
+
+# 데이터베이스 초기화
+python -c "from app.database import db_manager; db_manager.load_sample_data()"
+
+# 서버 실행
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 3. 접속 방법
-
-#### 🏠 로컬 접속 (본인만 사용)
-- **대화형 챗봇**: http://localhost:3000/
-- **기존 프로토타입**: http://localhost:3000/old
-
-#### 🌐 네트워크 접속 (동료와 공유)
-- **대화형 챗봇**: http://192.168.0.60:3000/
-- **기존 프로토타입**: http://192.168.0.60:3000/old
-
-> 💡 **동료 접속 방법**: 같은 WiFi(라우터)를 사용하는 동료에게 네트워크 URL을 공유하면 바로 접속 가능합니다.
-
-## ⚙️ 서버 관리
-
-### 🛑 서버 중지 방법
-**백엔드와 프론트엔드 서버 모두 동일한 방법으로 중지할 수 있습니다:**
-
-#### 단축키로 중지
-```bash
-Ctrl + C  # 서버가 실행 중인 터미널에서 입력
-```
-
-#### 프로세스 강제 종료
-```bash
-# 백엔드 서버 중지
-pkill -f "run.py"
-
-# 프론트엔드 서버 중지  
-pkill -f "start_frontend.py"
-
-# 모든 PMark1 관련 프로세스 중지
-pkill -f "PMark1"
-```
-
-#### 포트 기반 프로세스 확인 및 종료
-```bash
-# 사용 중인 포트 확인
-lsof -ti:3000  # 프론트엔드 포트
-lsof -ti:5001  # 백엔드 포트
-
-# 특정 포트 사용 프로세스 종료
-kill $(lsof -ti:3000)  # 프론트엔드 종료
-kill $(lsof -ti:5001)  # 백엔드 종료
-```
-
-### 🔄 서버 재시작
-```bash
-# 1단계: 기존 서버 중지
-pkill -f "run.py"
-pkill -f "start_frontend.py"
-
-# 2단계: 새로 시작
-cd backend && python run.py &
-python start_frontend.py &
-```
-
-### 📊 서버 상태 확인
-```bash
-# 프로세스 확인
-ps aux | grep -E "(run.py|start_frontend.py)"
-
-# 포트 사용 상태 확인
-netstat -an | grep LISTEN | grep -E ":300[0-9]|:500[0-9]"
-
-# 서버 응답 테스트
-curl -s http://localhost:5001/ && echo "✅ 백엔드 정상"
-curl -s http://localhost:3000/ | head -1 && echo "✅ 프론트엔드 정상"
-```
-
-## 🌐 네트워크 설정 및 공유
-
-### 📡 네트워크 접속 지원
-- **자동 IP 감지**: 시스템이 현재 네트워크 IP를 자동으로 감지
-- **0.0.0.0 바인딩**: 모든 네트워크 인터페이스에서 접속 허용
-- **포트 충돌 방지**: 자동으로 사용 가능한 포트 할당
-- **멀티 사용자 지원**: ThreadingTCPServer로 동시 다중 접속 처리
-- **스레드 안전성**: 각 사용자별 독립적인 스레드에서 처리
-
-### 👥 동료와 공유하기
-1. **같은 WiFi 연결**: 동료가 같은 라우터(WiFi)에 연결되어 있어야 함
-2. **IP 주소 확인**: 서버 시작 시 표시되는 Network URL 확인
-3. **URL 공유**: `http://192.168.0.60:3000/` 형태의 URL을 동료에게 공유
-4. **즉시 접속**: 동료가 해당 URL로 바로 접속 가능
-5. **동시 사용**: 여러 명이 동시에 접속하여 각자 작업 요청 가능
-
-> ⚡ **동시 접속**: 최대 **수십 명**이 동시에 접속 가능하며, 각 사용자는 **독립적인 세션**을 가집니다.
-
-### 🔧 네트워크 문제 해결
-```bash
-# 현재 IP 주소 확인
-ifconfig | grep "inet " | grep -v 127.0.0.1
-
-# 포트 사용 상태 확인
-netstat -an | grep LISTEN | grep -E ":300[0-9]|:500[0-9]"
-
-# 서버 연결 테스트
-curl http://localhost:3000/
-curl http://192.168.0.60:3000/
-```
-
-## 🏗️ 시스템 구조
-
-### 백엔드 (FastAPI)
-```
-backend/
-├── main.py          # 메인 API 서버 (채팅, 추천, 작업생성)
-├── run.py           # 서버 시작 스크립트 (네트워크 지원)
-├── requirements.txt # Python 의존성
-└── .env             # 환경 변수 설정 (OpenAI API Key)
-```
-
-### 프론트엔드
-```
-chatbot.html              # 새로운 대화형 챗봇 UI (7-segment 게이지)
-frontend-prototype.html   # 기존 프로토타입 UI
-start_frontend.py         # 프론트엔드 서버 (네트워크 지원)
-```
-
-## 📋 API 엔드포인트
-
-### 🆕 대화형 챗봇 API
-
-#### POST `/chat`
-```json
-{
-  "message": "생산 1팀에서 2RFCC Air Pump가 파손되었습니다",
-  "conversation_history": []
-}
-```
-
-**응답 예시:**
-```json
-{
-  "message": "모든 정보가 충분합니다! 다음과 같은 추천 결과를 준비했습니다.",
-  "field_analysis": {
-    "process": "생산 1팀",
-    "location": "2RFCC", 
-    "equipment": "Air Pump",
-    "status": "파손",
-    "confidence_score": 0.9,
-    "missing_fields": []
-  },
-  "recommendations": [...],
-  "response_type": "provide_recommendations",
-  "completeness_gauge": 1.0
-}
-```
-
-#### POST `/generate-work-details`
-선택된 추천으로 AI가 작업명과 작업상세를 생성합니다.
-```json
-{
-  "selected_recommendation": {
-    "itemno": "EG-AD-001",
-    "process": "생산 1팀",
-    "location": "2RFCC",
-    "equipType": "Air Pump", 
-    "statusCode": "파손",
-    "score": 95
-  },
-  "user_message": "생산 1팀에서 2RFCC Air Pump가 파손되었습니다"
-}
-```
-
-**응답 예시:**
-```json
-{
-  "work_title": "생산1팀 2RFCC Air Pump 파손 수리",
-  "work_details": "생산 1팀 2RFCC 지역의 Air Pump에서 파손이 발생하여 긴급 수리가 필요합니다. 파손 부위 점검 및 교체 부품 확인 후 수리 작업을 진행해주시기 바랍니다."
-}
-```
-
-#### POST `/finalize-work-order`
-최종 작업요청을 완성합니다.
-```json
-{
-  "work_title": "생산1팀 2RFCC Air Pump 파손 수리",
-  "work_details": "수정된 작업 상세 내용...",
-  "selected_recommendation": {...},
-  "user_message": "원본 사용자 입력"
-}
-```
-
-### 📊 기존 API (호환성 유지)
-
-#### POST `/analyze`
-텍스트 분석
-
-#### POST `/recommend`  
-추천 결과 생성
-
-#### GET `/test-openai`
-OpenAI 연결 테스트
-
-#### GET `/`
-헬스 체크
-
-## 🔧 설정
-
-### 환경 변수 (.env)
-```
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-### 지원 모델
-- OpenAI GPT-4o
-
-### 시스템 요구사항
-- **Python**: 3.13.3+
-- **macOS**: 24.5.0+ (개발 환경)
-- **네트워크**: 동일 라우터/WiFi 환경 (팀 공유 시)
-
-## 💡 사용 예시
-
-### 완전한 정보 입력
-```
-사용자: "생산 1팀에서 2RFCC Air Pump가 파손되었습니다"
-게이지: 🟢🟢🟢🟢🟢🟢🟢 (100% - 초록색)
-챗봇: "모든 정보가 충분합니다! 추천 결과를 준비했습니다."
-→ 즉시 5개 추천 제공
-```
-
-### 부분 정보 입력
-```
-사용자: "생산 1팀에서 Air Pump 문제"  
-게이지: 🟡🟡🟡🟡⬜⬜⬜ (60% - 노란색)
-챗봇: "위치 정보가 빠져있지만 추정해서 추천을 드리겠습니다."
-→ 위치를 추정한 추천 제공
-```
-
-### 정보 부족
-```
-사용자: "뭔가 문제가 있어요"
-게이지: 🟠🟠⬜⬜⬜⬜⬜ (20% - 주황색)
-챗봇: "보다 정확한 안내를 위해 추가 정보를 입력해주세요."
-→ 필요한 항목들 안내
-```
-
-### 작업 완성 프로세스
-```
-1. 추천 선택 → "작성완료" 클릭
-2. AI가 작업명/상세 자동 생성
-3. 사용자가 내용 수정/편집
-4. "확정" 클릭 → 최종 작업요청 완성
-```
-
-## 🎨 UI 특징
-
-### 7-Segment 실시간 완전성 게이지
-- **0-30%**: 🟠 주황색 (정보 부족)
-- **30-70%**: 🟡 노란색 (보통)  
-- **70-100%**: 🟢 초록색 (충분)
-- **실시간 동작**: 타이핑 중 즉시 반영
-
-### 좌우 분할 레이아웃
-- **왼쪽**: 스크롤 가능한 대화창
-- **오른쪽**: 추천 결과 및 편집 영역
-- **하단**: 예시 문장, 입력창, 완전성 게이지
-
-### 추천 선택지
-- 동그라미 선택 버튼
-- 실시간 편집 가능한 입력 필드
-- 호버 효과 및 선택 상태 표시
-- 점수별 색상 구분
-
-### 작업 편집 인터페이스
-- 작업명 입력 필드
-- 작업상세 텍스트 영역
-- 실시간 편집 가능
-- 최종 확정 버튼
-
-## 🔍 문제해결
-
-### 네트워크 접속 문제
-1. **같은 WiFi 확인**: 모든 사용자가 동일한 라우터에 연결되어 있는지 확인
-2. **방화벽 설정**: macOS 방화벽에서 Python 접속 허용
-3. **IP 주소 변경**: 라우터 재시작 시 IP가 변경될 수 있음
+### 2. 프론트엔드 설정
 
 ```bash
-# 현재 IP 주소 다시 확인
-ifconfig | grep "inet " | grep -v 127.0.0.1
+# 프론트엔드 디렉토리로 이동
+cd frontend
 
-# 서버 재시작
-pkill -f "run.py"
-pkill -f "start_frontend.py"
-cd backend && python run.py &
-python start_frontend.py &
+# 의존성 설치
+npm install
+
+# 개발 서버 실행
+npm start
 ```
 
-### 포트 충돌
-시스템이 자동으로 사용 가능한 포트를 찾습니다:
-- **백엔드**: 5001-5010
-- **프론트엔드**: 3000-3009
+### 3. 전체 시스템 실행
 
-### 백엔드 서버 검색 실패
-프론트엔드가 백엔드를 찾지 못하는 경우:
-1. 브라우저 콘솔(F12)에서 연결 시도 확인
-2. 백엔드 서버가 먼저 실행되어 있는지 확인
-3. 2초 타임아웃 후 자동 재시도
-
-### OpenAI API 오류
 ```bash
-# API 키 확인
-cat backend/.env
-
-# OpenAI 연결 테스트
-curl http://localhost:5001/test-openai
+# 프로젝트 루트에서
+python scripts/start_backend.py
+python scripts/start_frontend.py
 ```
 
-### 서버 상태 확인
+## 📊 API 문서
+
+### 주요 엔드포인트
+
+#### 1. 채팅 API
+- **POST** `/api/v1/chat`
+- **기능**: 사용자 입력 분석 및 추천 목록 생성
+- **요청**: `ChatRequest` (message, conversation_history)
+- **응답**: `ChatResponse` (message, recommendations, parsed_input)
+
+#### 2. 작업상세 생성 API
+- **POST** `/api/v1/generate-work-details`
+- **기능**: 선택된 추천 항목에 대한 작업상세 생성
+- **요청**: `WorkDetailsRequest` (selected_recommendation, user_message)
+- **응답**: `WorkDetailsResponse` (work_title, work_details)
+
+#### 3. 작업요청 완성 API
+- **POST** `/api/v1/finalize-work-order`
+- **기능**: 최종 작업요청 완성 및 저장
+- **요청**: `FinalizeRequest` (work_title, work_details, selected_recommendation)
+- **응답**: `FinalizeResponse` (message, work_order)
+
+### API 테스트
+
 ```bash
-# 로컬 접속 확인
-curl http://localhost:5001/
-curl http://localhost:3000/
+# Swagger UI 접속
+http://localhost:8000/docs
 
-# 네트워크 접속 확인  
-curl http://192.168.0.60:5001/
-curl http://192.168.0.60:3000/
+# curl 예시
+curl -X POST "http://localhost:8000/api/v1/chat" \
+     -H "Content-Type: application/json" \
+     -d '{"message": "1PE 압력베젤 고장"}'
 ```
 
-## 🆔 버전 정보
+## 🔧 개발 가이드
 
-- **현재 버전**: 2.1 (네트워크 접속 지원)
-- **이전 버전**: 2.0 (대화형 챗봇)
-- **최초 버전**: 1.0 (기본 추천 시스템)
-- **Python**: 3.13.3
-- **개발 환경**: macOS 24.5.0
+### 코드 수정 시 주의사항
 
-## 📝 변경사항
+#### 1. 모델 변경 시
+- `models.py`의 모델 변경 시 API 스키마가 자동으로 업데이트됨
+- 새로운 필드 추가 시 기본값 설정 권장
+- `Recommendation` 모델의 `priority` 필드는 필수 (finalize-work-order API에서 사용)
 
-### v2.1 (2025년 6월)
-- ✅ **네트워크 접속 지원**: 동료들과 실시간 공유 가능
-- ✅ **멀티 사용자 동시 접속**: ThreadingTCPServer로 수십 명 동시 사용 지원
-- ✅ **AI 작업명/상세 생성**: 선택된 추천으로 작업 내용 자동 생성
-- ✅ **다단계 작업 완성**: 추천 → 생성 → 편집 → 확정 워크플로우
-- ✅ **실시간 7-segment 게이지**: 타이핑 중 즉시 완전성 표시
-- ✅ **개선된 백엔드 검색**: 타임아웃 및 다중 호스트 지원
-- ✅ **안정적인 포트 바인딩**: SO_REUSEADDR 옵션으로 포트 재사용 문제 해결
+#### 2. LLM 프롬프트 수정 시
+- 일관성 있는 응답을 위해 `temperature`를 낮게 유지 (0.1~0.3)
+- 예시는 실제 사용 사례를 반영하여 업데이트
+- JSON 응답 형식 유지
 
-### v2.0 (2024년)
-- ✅ 대화형 챗봇 인터페이스 추가
-- ✅ 멀티턴 대화 지원
-- ✅ 정보 완전성 게이지
-- ✅ 스마트 항목 추출 AI
-- ✅ 편집 가능한 추천 시스템
-- ✅ 원클릭 작업요청 완성
+#### 3. 데이터베이스 스키마 변경 시
+- 기존 데이터 마이그레이션 필요
+- 인덱스 설정으로 성능 최적화
+- 외래키 제약조건 추가 시 주의
 
-### v1.0
-- ✅ 기본 FastAPI 백엔드
-- ✅ OpenAI GPT-4o 통합
-- ✅ 자동 포트 할당
-- ✅ CORS 지원
-- ✅ 기본 추천 시스템
+#### 4. API 응답 형식 변경 시
+- Frontend와의 호환성 확인
+- 에러 처리는 사용자 친화적으로 구현
+- 로깅을 통한 디버깅 지원
+
+### 성능 최적화
+
+#### 1. 캐싱
+- LLM 응답 캐싱으로 API 비용 절약
+- 데이터베이스 쿼리 결과 캐싱
+- 추천 결과 캐싱
+
+#### 2. 배치 처리
+- 대량의 용어 정규화 시 배치 처리
+- 데이터베이스 쿼리 최적화
+- 비동기 처리 활용
+
+#### 3. 모니터링
+- API 응답 시간 모니터링
+- LLM API 사용량 추적
+- 에러율 모니터링
+
+## 🧪 테스트
+
+### 단위 테스트
+```bash
+# 백엔드 테스트
+cd backend
+python -m pytest tests/
+
+# 프론트엔드 테스트
+cd frontend
+npm test
+```
+
+### 통합 테스트
+```bash
+# API 테스트
+python scripts/test_api.py
+
+# 전체 시스템 테스트
+python scripts/test_system.py
+```
+
+### 테스트 시나리오
+1. **자연어 입력 테스트**: "1PE 압력베젤 고장" → 정확한 파싱 및 추천
+2. **오타 처리 테스트**: "압력베젤" → "Pressure Vessel" 정규화
+3. **ITEMNO 조회 테스트**: "ITEMNO 12345" → 특정 작업 정보 제공
+4. **작업상세 생성 테스트**: 선택된 추천 항목으로 작업상세 생성
+5. **최종 완성 테스트**: 작업요청 완성 및 저장
+
+## 📈 향후 개발 계획
+
+### 단기 계획 (1-2개월)
+- [ ] 외부 시스템 연동 (Kafka, ERP 시스템)
+- [ ] 사용자 인증 및 권한 관리
+- [ ] 작업요청 이력 관리
+- [ ] 모바일 앱 개발
+
+### 중기 계획 (3-6개월)
+- [ ] 다국어 지원 (영어, 중국어)
+- [ ] 음성 입력 지원
+- [ ] 이미지 기반 설비 인식
+- [ ] 예측 분석 기능
+
+### 장기 계획 (6개월 이상)
+- [ ] 머신러닝 모델 도입
+- [ ] 실시간 모니터링 대시보드
+- [ ] 자동화된 작업 스케줄링
+- [ ] AI 기반 예방 정비
+
+## 🤝 팀 협업 가이드
+
+### 코드 리뷰 체크리스트
+- [ ] 기능 요구사항 충족
+- [ ] 코드 품질 및 가독성
+- [ ] 에러 처리 및 예외 상황
+- [ ] 성능 최적화
+- [ ] 보안 고려사항
+- [ ] 테스트 코드 작성
+
+### 커밋 메시지 규칙
+```
+feat: 새로운 기능 추가
+fix: 버그 수정
+docs: 문서 수정
+style: 코드 포맷팅
+refactor: 코드 리팩토링
+test: 테스트 코드 추가
+chore: 빌드 프로세스 또는 보조 도구 변경
+```
+
+### 브랜치 전략
+- `main`: 프로덕션 배포용
+- `develop`: 개발 통합용
+- `feature/기능명`: 새로운 기능 개발
+- `hotfix/버그명`: 긴급 버그 수정
+
+## 📞 문의 및 지원
+
+### 담당자 연락처
+- **프로젝트 매니저**: [이메일]
+- **백엔드 개발**: [이메일]
+- **프론트엔드 개발**: [이메일]
+- **AI/ML 엔지니어**: [이메일]
+
+### 이슈 리포트
+- GitHub Issues를 통한 버그 리포트
+- 기능 요청 및 개선 제안
+- 기술 지원 요청
+
+## 📄 라이선스
+
+이 프로젝트는 [라이선스명] 하에 배포됩니다.
 
 ---
 
-**🌐 네트워크 URL**: http://192.168.0.60:3000/  
-**💻 로컬 URL**: http://localhost:3000/  
-**개발 환경**: macOS 24.5.0  
-**개발자**: YMARX  
-**라이선스**: MIT 
+**PMark1 AI Assistant** - 설비관리 시스템의 미래를 만들어갑니다.

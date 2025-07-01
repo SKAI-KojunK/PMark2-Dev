@@ -10,8 +10,21 @@ import sys
 import os
 from contextlib import closing
 
-def find_free_port(start_port=5001, max_attempts=10):
+def find_free_port(start_port=8001, max_attempts=10):
     """사용 가능한 포트를 찾는 함수"""
+    # 먼저 설정된 포트를 시도
+    from app.config import Config
+    preferred_port = Config.BACKEND_PORT
+    
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('0.0.0.0', preferred_port))
+            return preferred_port
+    except OSError:
+        pass
+    
+    # 설정된 포트가 사용 중이면 다른 포트 시도
     for port in range(start_port, start_port + max_attempts):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
