@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # PMark1 AI Assistant
 
 설비관리 시스템을 위한 자연어 기반 AI 작업요청 생성 어시스턴트
@@ -332,3 +333,6 @@ chore: 빌드 프로세스 또는 보조 도구 변경
 ---
 
 **PMark1 AI Assistant** - 설비관리 시스템의 미래를 만들어갑니다.
+=======
+# PMark2-Dev
+>>>>>>> af2de9b9fe36c1321911a1fadb8b4bbaa522fe39
