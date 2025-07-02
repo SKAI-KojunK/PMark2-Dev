@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# PMark1-Dev 개발 환경 설정 스크립트
+# PMark2-Dev 개발 환경 설정 스크립트
 
 set -e
 
-echo "🚀 PMark1-Dev 개발 환경 설정을 시작합니다..."
+echo "🚀 PMark2-Dev 개발 환경 설정을 시작합니다..."
 
 # 색상 정의
 RED='\033[0;31m'
@@ -153,7 +153,7 @@ install_dev_tools() {
 # 설정 완료 메시지
 show_completion() {
     echo ""
-    log_success "PMark1-Dev 개발 환경 설정이 완료되었습니다!"
+    log_success "PMark2-Dev 개발 환경 설정이 완료되었습니다!"
     echo ""
     echo "다음 단계를 진행하세요:"
     echo ""
@@ -175,7 +175,7 @@ show_completion() {
 # 메인 실행
 main() {
     echo "=========================================="
-    echo "  PMark1-Dev 개발 환경 설정"
+    echo "  PMark2-Dev 개발 환경 설정"
     echo "=========================================="
     echo ""
     

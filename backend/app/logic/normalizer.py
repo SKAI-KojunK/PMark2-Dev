@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 from ..config import Config
 import json
 import re
+import sqlite3
 
 class LLMNormalizer:
     """
@@ -45,7 +46,7 @@ class LLMNormalizer:
         - OpenAI 클라이언트 초기화
         - 표준 용어 사전 정의 (카테고리별)
         """
-        self.client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        openai.api_key = Config.OPENAI_API_KEY
         self.model = Config.OPENAI_MODEL
         
         # 표준 용어 사전 (LLM이 참조할 기준)
@@ -69,6 +70,32 @@ class LLMNormalizer:
             ]
         }
     
+    def _get_db_terms(self, category: str) -> list:
+        """DB에서 표준 용어 목록 동적 추출"""
+        db_path = Config.SQLITE_DB_PATH
+        conn = sqlite3.connect(db_path)
+        terms = []
+        if category == "equipment":
+            cursor = conn.execute("SELECT DISTINCT equipType FROM notification_history")
+            terms = [row[0] for row in cursor.fetchall() if row[0]]
+        elif category == "location":
+            cursor = conn.execute("SELECT DISTINCT location FROM notification_history")
+            terms = [row[0] for row in cursor.fetchall() if row[0]]
+        elif category == "status":
+            try:
+                cursor = conn.execute("SELECT code, description, category FROM status_codes")
+                # code, description, category 모두 프롬프트에 제공
+                terms = [(row[0], row[1], row[2]) for row in cursor.fetchall() if row[0]]
+            except sqlite3.OperationalError:
+                # status_codes 테이블이 없는 경우 notification_history에서 statusCode 추출
+                cursor = conn.execute("SELECT DISTINCT statusCode FROM notification_history")
+                terms = [row[0] for row in cursor.fetchall() if row[0]]
+        elif category == "priority":
+            cursor = conn.execute("SELECT DISTINCT priority FROM notification_history")
+            terms = [row[0] for row in cursor.fetchall() if row[0]]
+        conn.close()
+        return terms
+
     def normalize_term(self, term: str, category: str) -> Tuple[str, float]:
         """
         LLM을 사용하여 용어를 표준 용어로 정규화
@@ -98,11 +125,12 @@ class LLMNormalizer:
             return term, 0.0
         
         try:
-            # LLM 프롬프트 생성
-            prompt = self._create_normalization_prompt(term, category)
+            # DB에서 표준 용어 목록 동적 추출
+            db_terms = self._get_db_terms(category)
+            prompt = self._create_normalization_prompt(term, category, db_terms)
             
             # LLM 호출 (일관성을 위해 낮은 temperature 사용)
-            response = self.client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "당신은 설비관리 시스템의 용어 정규화 전문가입니다."},
@@ -123,25 +151,38 @@ class LLMNormalizer:
             print(f"LLM 정규화 오류: {e}")
             return term, 0.5  # 오류 시 원본 반환, 중간 신뢰도
     
-    def _create_normalization_prompt(self, term: str, category: str) -> str:
+    def _create_normalization_prompt(self, term: str, category: str, db_terms) -> str:
         """
-        정규화용 프롬프트 생성
-        
-        Args:
-            term: 정규화할 용어
-            category: 용어 카테고리
-            
-        Returns:
-            LLM에게 전달할 프롬프트 문자열
-            
-        담당자 수정 가이드:
-        - 표준 용어 목록은 실제 DB 데이터와 일치해야 함
-        - 정규화 규칙은 비즈니스 로직에 맞게 수정 가능
-        - 예시는 실제 사용 사례를 반영하여 업데이트
+        DB에서 추출한 표준 용어 목록을 LLM 프롬프트에 직접 제공
+        현상코드는 code, description, category 모두 제공
+        우선순위는 DB의 실제 용어들을 사용
         """
-        
-        standard_terms = self.standard_terms.get(category, [])
-        
+        if category == "status":
+            # 현상코드: code, description, category 모두 프롬프트에 포함
+            if db_terms and isinstance(db_terms[0], tuple):
+                # status_codes 테이블에서 가져온 경우 (code, description, category)
+                status_lines = [f"- 코드: {code}, 설명: {desc}, 범주: {cat}" for code, desc, cat in db_terms]
+                term_list = "\n".join(status_lines)
+                extra_rule = "입력된 내용이 아래 현상코드의 설명(description)이나 범주(category)에 포함되면 해당 코드(code)로 정규화하세요."
+            else:
+                # notification_history에서 가져온 경우 (단일 값)
+                status_lines = [f"- {term}" for term in db_terms]
+                term_list = "\n".join(status_lines)
+                extra_rule = ""
+        elif category == "priority":
+            # 우선순위: DB의 실제 용어들을 사용
+            priority_lines = [f"- {priority}" for priority in db_terms]
+            term_list = "\n".join(priority_lines)
+            extra_rule = """
+우선순위 정규화 규칙:
+- "긴급", "최우선", "emergency", "urgent", "긴급하게", "즉시", "바로" → "긴급작업(최우선순위)"
+- "우선", "priority", "high", "우선적으로", "먼저", "중요" → "우선작업(Deadline준수)"
+- "일반", "normal", "regular", "보통", "평상시", "정상" → "일반작업(Deadline없음)"
+- "주기", "TA", "PM", "정기", "정기적", "주기적", "점검" → "주기작업(TA.PM)"
+"""
+        else:
+            term_list = "\n".join([f"- {t}" for t in db_terms])
+            extra_rule = ""
         return f"""
 다음 입력 용어를 설비관리 시스템의 표준 용어로 정규화해주세요.
 
@@ -149,16 +190,25 @@ class LLMNormalizer:
 **카테고리**: {category}
 
 **표준 용어 목록**:
-{chr(10).join([f"- {term}" for term in standard_terms])}
+{term_list}
 
-**정규화 규칙**:
-1. 한국어-영어 혼용 표현을 표준 영어 용어로 변환
-2. 오타나 띄어쓰기 오류를 수정
-3. 유사한 의미의 표현을 가장 적절한 표준 용어로 매핑
-4. 표준 용어 목록에 없는 경우, 가장 유사한 용어 선택
-5. 전혀 매칭되지 않는 경우 "UNKNOWN" 반환
+{extra_rule}
 
-**응답 형식**:
+정규화 규칙:
+1. 오타, 띄어쓰기 오류, 한영 혼용을 DB에 있는 표준 용어로 변환
+2. 여러 단어로 구성된 표현도 해당하는 표준 용어로 매핑
+3. 유사한 의미나 동의어를 적절한 표준 용어로 변환
+4. 맥락을 고려하여 가장 적절한 표준 용어 선택
+5. 표준 용어 목록에 없는 경우 가장 유사한 용어 선택
+6. 전혀 매칭되지 않는 경우 "UNKNOWN" 반환
+
+매칭 우선순위:
+1. 정확한 일치 (가장 높은 신뢰도)
+2. 부분 일치 또는 유사한 의미 (높은 신뢰도)
+3. 맥락적 유사성 (중간 신뢰도)
+4. 추정 매칭 (낮은 신뢰도)
+
+응답 형식:
 ```json
 {{
     "normalized_term": "표준용어",
@@ -166,12 +216,6 @@ class LLMNormalizer:
     "reasoning": "정규화 이유"
 }}
 ```
-
-**예시**:
-- 입력: "압력베젤" → 출력: {{"normalized_term": "[VEDR]Pressure Vessel/ Drum", "confidence": 0.95, "reasoning": "한국어 표현을 실제 DB 형식으로 변환"}}
-- 입력: "모터밸브" → 출력: {{"normalized_term": "[MVVV]Motor Operated Valve/ Motor Operated Valve", "confidence": 0.90, "reasoning": "한국어 표현을 실제 DB 형식으로 변환"}}
-- 입력: "1PE" → 출력: {{"normalized_term": "No.1 PE", "confidence": 0.95, "reasoning": "축약형을 표준 형식으로 변환"}}
-- 입력: "고장" → 출력: {{"normalized_term": "고장.결함.수명소진", "confidence": 0.95, "reasoning": "일반 고장을 DB의 표준 현상코드로 변환"}}
 """
     
     def _parse_normalization_response(self, response_text: str) -> Tuple[str, float]:

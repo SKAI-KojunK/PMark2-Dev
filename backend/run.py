@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PMark1 Backend Server Runner
+PMark2 Backend Server Runner
 FastAPI를 이용한 백엔드 서버 실행 스크립트
 """
 
@@ -53,7 +53,7 @@ def main():
     
     local_ip = get_local_ip()
     
-    print(f"🚀 PMark1 Backend Server Starting...")
+    print(f"🚀 PMark2 Backend Server Starting...")
     print(f"🌐 Server running on:")
     print(f"   • Local:    http://localhost:{port}")
     print(f"   • Network:  http://{local_ip}:{port}")

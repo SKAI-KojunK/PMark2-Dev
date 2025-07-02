@@ -27,7 +27,7 @@ app.include_router(work_details.router, prefix="/api/v1", tags=["work-details"])
 @app.on_event("startup")
 async def startup_event():
     """애플리케이션 시작 시 실행"""
-    print("🚀 PMark1 AI Assistant 시작 중...")
+    print("🚀 PMark2 AI Assistant 시작 중...")
     
     # 데이터베이스 초기화
     try:
@@ -40,14 +40,14 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """애플리케이션 종료 시 실행"""
-    print("🛑 PMark1 AI Assistant 종료 중...")
+    print("🛑 PMark2 AI Assistant 종료 중...")
     db_manager.close()
 
 @app.get("/")
 async def root():
     """루트 엔드포인트"""
     return {
-        "message": "PMark1 AI Assistant API",
+        "message": "PMark2 AI Assistant API",
         "version": Config.API_VERSION,
         "status": "running"
     }

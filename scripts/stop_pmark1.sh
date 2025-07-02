@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PMark1 시스템 종료 스크립트
+# PMark2 시스템 종료 스크립트
 # 사용법: ./scripts/stop_pmark1.sh
 
-echo "🛑 PMark1 AI Assistant 시스템 종료 중..."
+echo "🛑 PMark2 AI Assistant 시스템 종료 중..."
 
 # 프로젝트 루트 디렉토리로 이동
-cd /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark1-Dev
+cd /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark2-Dev
 
 # 저장된 프로세스 ID 확인
 if [ -f /tmp/pmark1_backend.pid ]; then
@@ -46,7 +46,7 @@ sleep 2
 
 # 최종 확인
 if ! lsof -i :8001 > /dev/null 2>&1 && ! lsof -i :3001 > /dev/null 2>&1; then
-    echo "✅ PMark1 시스템 종료 완료!"
+    echo "✅ PMark2 시스템 종료 완료!"
     echo "📊 모든 포트가 해제되었습니다."
 else
     echo "⚠️  일부 포트가 여전히 사용 중일 수 있습니다."

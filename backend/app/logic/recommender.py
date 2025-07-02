@@ -45,7 +45,7 @@ class RecommendationEngine:
         - OpenAI 클라이언트 초기화
         - 로깅 설정
         """
-        self.client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        openai.api_key = Config.OPENAI_API_KEY
         self.model = Config.OPENAI_MODEL
         self.logger = logging.getLogger(__name__)
     
@@ -84,6 +84,7 @@ class RecommendationEngine:
                 equip_type=parsed_input.equipment_type,
                 location=parsed_input.location,
                 status_code=parsed_input.status_code,
+                priority=parsed_input.priority,
                 limit=limit * 2  # 더 많은 결과를 가져와서 필터링
             )
             
@@ -99,8 +100,8 @@ class RecommendationEngine:
                     parsed_input, notification
                 )
                 
-                # 유사도 점수가 임계값 이상인 경우만 추천
-                if score > 0.3:
+                # 유사도 점수가 임계값 이상인 경우만 추천 (임계값을 낮춰서 더 많은 추천 제공)
+                if score > 0.2:  # 0.3에서 0.2로 낮춤
                     recommendation = Recommendation(
                         itemno=notification['itemno'],
                         process=notification['process'],
@@ -158,7 +159,7 @@ class RecommendationEngine:
         try:
             prompt = self._create_work_details_prompt(recommendation, parsed_input)
             
-            response = self.client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "당신은 설비관리 시스템의 작업명과 상세 생성 전문가입니다."},
@@ -327,7 +328,7 @@ class RecommendationEngine:
     
     def _calculate_simple_similarity_score(self, parsed_input: ParsedInput, notification: Dict) -> float:
         """
-        간단한 문자열 매칭 기반 유사도 점수 계산 (LLM 호출 없음)
+        개선된 유사도 점수 계산 (LLM 호출 없음)
         
         Args:
             parsed_input: 파싱된 입력 데이터
@@ -344,39 +345,58 @@ class RecommendationEngine:
         score = 0.0
         total_weight = 0.0
         
-        # 설비유형 매칭 (가중치: 0.4)
+        # 설비유형 매칭 (가중치: 0.35)
         if parsed_input.equipment_type and notification['equipType']:
-            equip_match = self._calculate_string_similarity(
+            equip_match = self._calculate_enhanced_string_similarity(
                 parsed_input.equipment_type.lower(), 
                 notification['equipType'].lower()
             )
-            score += equip_match * 0.4
-            total_weight += 0.4
+            score += equip_match * 0.35
+            total_weight += 0.35
         
-        # 위치 매칭 (가중치: 0.3)
+        # 위치/공정명 매칭 (가중치: 0.35)
+        # 사용자가 "공정명"으로 입력한 경우 DB의 "Location" 컬럼과 매칭
         if parsed_input.location and notification['location']:
-            location_match = self._calculate_string_similarity(
+            location_match = self._calculate_enhanced_string_similarity(
                 parsed_input.location.lower(), 
                 notification['location'].lower()
             )
-            score += location_match * 0.3
-            total_weight += 0.3
+            score += location_match * 0.35
+            total_weight += 0.35
         
-        # 현상코드 매칭 (가중치: 0.3)
+        # 현상코드 매칭 (가중치: 0.2)
         if parsed_input.status_code and notification['statusCode']:
-            status_match = self._calculate_string_similarity(
+            status_match = self._calculate_enhanced_string_similarity(
                 parsed_input.status_code.lower(), 
                 notification['statusCode'].lower()
             )
-            score += status_match * 0.3
-            total_weight += 0.3
+            score += status_match * 0.2
+            total_weight += 0.2
+        
+        # 우선순위 매칭 (가중치: 0.1)
+        if parsed_input.priority and notification['priority']:
+            priority_match = self._calculate_enhanced_string_similarity(
+                parsed_input.priority.lower(), 
+                notification['priority'].lower()
+            )
+            score += priority_match * 0.1
+            total_weight += 0.1
         
         # 가중 평균 계산
-        return score / total_weight if total_weight > 0 else 0.0
+        final_score = score / total_weight if total_weight > 0 else 0.0
+        
+        # 보너스 점수: 모든 필드가 매칭되는 경우
+        if (parsed_input.equipment_type and parsed_input.location and 
+            parsed_input.status_code and parsed_input.priority):
+            if (equip_match > 0.8 and location_match > 0.8 and 
+                status_match > 0.8 and priority_match > 0.8):
+                final_score = min(final_score + 0.1, 1.0)  # 최대 0.1점 보너스
+        
+        return final_score
     
-    def _calculate_string_similarity(self, str1: str, str2: str) -> float:
+    def _calculate_enhanced_string_similarity(self, str1: str, str2: str) -> float:
         """
-        간단한 문자열 유사도 계산
+        개선된 문자열 유사도 계산
         
         Args:
             str1: 첫 번째 문자열
@@ -392,9 +412,13 @@ class RecommendationEngine:
         if str1 == str2:
             return 1.0
         
-        # 부분 매칭
+        # 부분 매칭 (포함 관계)
         if str1 in str2 or str2 in str1:
-            return 0.8
+            # 포함된 문자열의 길이 비율에 따라 점수 조정
+            shorter = min(len(str1), len(str2))
+            longer = max(len(str1), len(str2))
+            ratio = shorter / longer
+            return 0.7 + (ratio * 0.2)  # 0.7 ~ 0.9 범위
         
         # 공통 단어 수 계산
         words1 = set(str1.split())
@@ -406,7 +430,57 @@ class RecommendationEngine:
         common_words = words1.intersection(words2)
         total_words = words1.union(words2)
         
-        return len(common_words) / len(total_words) if total_words else 0.0
+        word_similarity = len(common_words) / len(total_words) if total_words else 0.0
+        
+        # 문자 단위 유사도 계산 (Levenshtein 거리 기반)
+        char_similarity = self._calculate_character_similarity(str1, str2)
+        
+        # 단어 유사도와 문자 유사도의 가중 평균
+        return (word_similarity * 0.7) + (char_similarity * 0.3)
+    
+    def _calculate_character_similarity(self, str1: str, str2: str) -> float:
+        """
+        문자 단위 유사도 계산 (간단한 Levenshtein 거리 기반)
+        
+        Args:
+            str1: 첫 번째 문자열
+            str2: 두 번째 문자열
+            
+        Returns:
+            유사도 점수 (0.0 ~ 1.0)
+        """
+        if not str1 or not str2:
+            return 0.0
+        
+        # 간단한 편집 거리 계산
+        len1, len2 = len(str1), len(str2)
+        
+        # 동적 프로그래밍 테이블
+        dp = [[0] * (len2 + 1) for _ in range(len1 + 1)]
+        
+        # 초기화
+        for i in range(len1 + 1):
+            dp[i][0] = i
+        for j in range(len2 + 1):
+            dp[0][j] = j
+        
+        # 편집 거리 계산
+        for i in range(1, len1 + 1):
+            for j in range(1, len2 + 1):
+                if str1[i-1] == str2[j-1]:
+                    dp[i][j] = dp[i-1][j-1]
+                else:
+                    dp[i][j] = min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]) + 1
+        
+        # 유사도 점수 계산 (편집 거리를 유사도로 변환)
+        max_len = max(len1, len2)
+        if max_len == 0:
+            return 1.0
+        
+        distance = dp[len1][len2]
+        similarity = 1.0 - (distance / max_len)
+        
+        return max(0.0, similarity)
     
     def get_recommendation_statistics(self, recommendations: List[Recommendation]) -> Dict:
         """

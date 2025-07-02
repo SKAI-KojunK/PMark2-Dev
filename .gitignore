@@ -57,3 +57,5 @@ Thumbs.db
 logs/ venv/
 backend/venv/
 .venv/
+
+~$[Noti이력].xlsx

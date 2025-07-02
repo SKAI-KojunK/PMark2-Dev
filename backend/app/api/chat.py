@@ -247,6 +247,8 @@ async def _handle_default_scenario(parsed_input: ParsedInput, user_message: str,
     message += "다음과 같은 형식으로 입력해주세요:\n"
     message += "• \"1PE 압력베젤 고장\" - 자연어로 작업 요청\n"
     message += "• \"ITEMNO 12345\" - 특정 작업 상세 조회\n\n"
+    message += "**위치 정보를 포함하면 더 정확한 추천을 받을 수 있습니다.**\n"
+    message += "예시: \"No.1 PE 압력베젤 고장\", \"석유제품배합/저장 탱크 누설\"\n\n"
     message += "어떤 작업을 도와드릴까요?"
     
     return ChatResponse(
@@ -330,12 +332,13 @@ def _create_response_message(parsed_input: ParsedInput, recommendations: list, m
         message += "다음 정보가 누락되었습니다:\n"
         for field in missing_fields:
             field_names = {
-                "location": "위치/공정",
+                "location": "위치/공정 (가장 중요)",
                 "equipment_type": "설비유형",
                 "status_code": "현상코드"
             }
             message += f"• {field_names.get(field, field)}\n"
-        message += "\n더 구체적으로 입력해주시면 정확한 추천을 제공할 수 있습니다.\n\n"
+        message += "\n**위치 정보를 포함하면 더 정확한 추천을 받을 수 있습니다.**\n"
+        message += "예시: \"No.1 PE 압력베젤 고장\", \"석유제품배합/저장 탱크 누설\"\n\n"
     
     # 추천 결과 안내
     if recommendations:

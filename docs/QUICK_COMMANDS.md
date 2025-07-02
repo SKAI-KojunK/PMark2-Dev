@@ -1,4 +1,4 @@
-# PMark1 빠른 명령어 가이드
+# PMark2 빠른 명령어 가이드
 
 ## 🚀 시스템 시작/종료
 
@@ -81,7 +81,7 @@ pip install -r requirements.txt
 ## ⚡ 빠른 체크리스트
 
 시스템 시작 전 확인사항:
-- [ ] 프로젝트 디렉토리: `/Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark1-Dev`
+- [ ] 프로젝트 디렉토리: `/Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark2-Dev`
 - [ ] 백엔드 가상환경: `backend/venv/`
 - [ ] 환경 변수: `backend/.env` (OpenAI API 키)
 - [ ] 데이터베이스: `backend/data/sample_notifications.db`

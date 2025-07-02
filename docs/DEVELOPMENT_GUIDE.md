@@ -25,7 +25,7 @@
 ```bash
 # 1. 저장소 클론
 git clone [repository-url]
-cd PMark1-Dev
+cd PMark2-Dev
 
 # 2. 백엔드 환경 설정
 cd backend

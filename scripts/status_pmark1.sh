@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# PMark1 시스템 상태 확인 스크립트
+# PMark2 시스템 상태 확인 스크립트
 # 사용법: ./scripts/status_pmark1.sh
 
-echo "📊 PMark1 AI Assistant 시스템 상태 확인 중..."
+echo "📊 PMark2 AI Assistant 시스템 상태 확인 중..."
 echo ""
 
 # 프로젝트 루트 디렉토리로 이동
-cd /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark1-Dev
+cd /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark2-Dev
 
 # 백엔드 서버 상태 확인
 echo "🔧 백엔드 서버 (포트 8001):"

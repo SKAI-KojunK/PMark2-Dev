@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PMark1 시스템 시작 스크립트
+# PMark2 시스템 시작 스크립트
 # 사용법: ./scripts/start_pmark1.sh
 
-echo "🚀 PMark1 AI Assistant 시스템 시작 중..."
+echo "🚀 PMark2 AI Assistant 시스템 시작 중..."
 
 # 프로젝트 루트 디렉토리로 이동
-cd /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark1-Dev
+cd /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark2-Dev
 
 # 기존 프로세스 종료
 echo "🛑 기존 프로세스 정리 중..."
@@ -52,7 +52,7 @@ else
 fi
 
 echo ""
-echo "🎉 PMark1 AI Assistant 시스템 시작 완료!"
+echo "🎉 PMark2 AI Assistant 시스템 시작 완료!"
 echo ""
 echo "📱 접속 정보:"
 echo "   • 웹 브라우저: http://localhost:3001"

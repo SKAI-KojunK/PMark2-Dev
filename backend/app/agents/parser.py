@@ -46,7 +46,7 @@ class InputParser:
         - OpenAI 클라이언트 초기화
         - 모델 설정
         """
-        self.openai_client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        openai.api_key = Config.OPENAI_API_KEY
         
         # ITEMNO 패턴 (채번 규칙)
         self.itemno_patterns = [
@@ -176,15 +176,14 @@ class InputParser:
             import time
             start_time = time.time()
             
-            response = self.openai_client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model=Config.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "당신은 설비관리 시스템의 입력 분석 전문가입니다."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,  # 일관성을 위해 낮은 temperature
-                max_tokens=500,
-                timeout=15  # 15초 타임아웃
+                max_tokens=500
             )
             
             # 타임아웃 체크
@@ -308,9 +307,18 @@ class InputParser:
 
 **추출해야 할 정보**:
 1. location: 위치/공정 (예: No.1 PE, No.2 PE, 석유제품배합/저장, 합성수지 포장, RFCC, 1창고 #7Line, 2창고 #8Line, 공통 시설)
+   - 사용자가 "위치" 또는 "공정"으로 언급한 내용을 우선적으로 추출
+   - 위치 정보가 없으면 공정명을 위치로 사용
 2. equipment_type: 설비유형 (예: Pressure Vessel, Motor Operated Valve, Conveyor, Pump, Heat Exchanger, Valve, Control Valve, Tank, Storage Tank, Drum, Filter, Reactor, Compressor, Fan, Blower)
 3. status_code: 현상코드 (예: 고장, 누설, 작동불량, 소음, 진동, 온도상승, 압력상승, 주기적 점검/정비, 고장.결함.수명소진)
-4. priority: 우선순위 (긴급작업, 일반작업, 계획작업 중 선택)
+4. priority: 우선순위 (예: 긴급작업(최우선순위), 우선작업(Deadline준수), 일반작업(Deadline없음), 주기작업(TA.PM))
+
+**추출 규칙**:
+1. 문장의 어느 위치에 있든 해당 카테고리의 내용을 찾아 추출
+2. 한 단어가 아닌 여러 단어로 구성된 표현도 해당 범주로 인식
+3. 유사한 표현이나 동의어도 적절한 카테고리로 매핑
+4. 맥락을 고려하여 가장 적절한 카테고리 선택
+5. **위치 정보가 가장 중요하므로, 위치 관련 키워드를 우선적으로 찾아 추출**
 
 **응답 형식**:
 ```json
@@ -325,13 +333,16 @@ class InputParser:
 ```
 
 **예시**:
-- 입력: "1PE 압력베젤 고장" → 출력: {{"location": "No.1 PE", "equipment_type": "Pressure Vessel", "status_code": "고장", "priority": "긴급작업", "confidence": 0.95, "reasoning": "고장은 긴급 상황"}}
-- 입력: "모터밸브 누설 점검" → 출력: {{"location": null, "equipment_type": "Motor Operated Valve", "status_code": "누설", "priority": "일반작업", "confidence": 0.9, "reasoning": "누설은 일반적인 점검 대상"}}
+- 입력: "1PE 압력베젤 고장" → 출력: {{"location": "No.1 PE", "equipment_type": "Pressure Vessel", "status_code": "고장", "priority": "긴급작업(최우선순위)", "confidence": 0.95, "reasoning": "고장은 긴급 상황"}}
+- 입력: "모터밸브 누설 점검" → 출력: {{"location": null, "equipment_type": "Motor Operated Valve", "status_code": "누설", "priority": "일반작업(Deadline없음)", "confidence": 0.9, "reasoning": "누설은 일반적인 점검 대상"}}
+- 입력: "긴급하게 2창고 컨베이어가 작동하지 않아요" → 출력: {{"location": "2창고 #8Line", "equipment_type": "Conveyor", "status_code": "작동불량", "priority": "긴급작업(최우선순위)", "confidence": 0.95, "reasoning": "긴급 + 작동하지 않음 = 긴급작업"}}
+- 입력: "석유제품 저장탱크에서 소음이 발생하고 있어 우선 점검이 필요합니다" → 출력: {{"location": "석유제품배합/저장", "equipment_type": "Storage Tank", "status_code": "소음", "priority": "우선작업(Deadline준수)", "confidence": 0.9, "reasoning": "우선 점검 = 우선작업"}}
 
 **주의사항**:
 - 추출할 수 없는 정보는 null로 설정
 - confidence는 0.0~1.0 사이의 값으로 설정
 - 대화 히스토리를 참고하여 맥락을 파악
+- 여러 단어로 구성된 표현도 정확히 인식
 """
     
     def _parse_llm_response(self, response_text: str) -> Dict:
@@ -417,6 +428,14 @@ class InputParser:
             )
             if confidence > 0.3:
                 normalized_data['status_code'] = normalized_term
+        
+        # 우선순위 정규화
+        if parsed_data.get('priority'):
+            normalized_term, confidence = normalizer.normalize_term(
+                parsed_data['priority'], 'priority'
+            )
+            if confidence > 0.3:
+                normalized_data['priority'] = normalized_term
         
         return normalized_data
     

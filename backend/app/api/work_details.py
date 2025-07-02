@@ -30,8 +30,8 @@ router = APIRouter(tags=["work-details"])
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
-# OpenAI 클라이언트
-client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+# OpenAI 설정
+openai.api_key = Config.OPENAI_API_KEY
 
 @router.post("/generate-work-details", response_model=WorkDetailsResponse)
 async def generate_work_details(request: WorkDetailsRequest):
@@ -205,7 +205,7 @@ async def _generate_work_details_with_llm(recommendation, user_message: str) -> 
         prompt = _create_work_details_prompt(recommendation, user_message)
         
         # LLM 호출
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model=Config.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "당신은 설비관리 시스템의 작업명과 상세 생성 전문가입니다."},

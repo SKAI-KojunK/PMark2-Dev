@@ -219,13 +219,14 @@ class DatabaseManager:
         self.logger.info("샘플 데이터 생성 완료")
     
     def search_similar_notifications(self, equip_type: str = None, location: str = None, 
-                                   status_code: str = None, limit: int = 15) -> List[Dict[str, Any]]:
-        """유사한 작업요청 이력 검색 (유사표현 정규화 적용)"""
+                                   status_code: str = None, priority: str = None, limit: int = 15) -> List[Dict[str, Any]]:
+        """유사한 작업요청 이력 검색 (위치 기반 검색 강화)"""
         
-        # 입력값 정규화
+        # 입력값 정규화 (위치 우선 정규화)
         normalized_location = self.normalize_term(location, "location") if location else None
         normalized_equip_type = self.normalize_term(equip_type, "equipment") if equip_type else None
         normalized_status_code = self.normalize_term(status_code, "status") if status_code else None
+        normalized_priority = self.normalize_term(priority, "priority") if priority else None
         
         query = '''
             SELECT itemno, process, location, equipType, statusCode, work_title, work_details, priority
@@ -234,7 +235,9 @@ class DatabaseManager:
         '''
         params = []
         
+        # 위치 기반 검색 강화 (위치가 입력된 경우 우선 검색)
         if normalized_location:
+            # 위치와 공정명 모두에서 검색하되, 위치 매칭에 더 높은 가중치
             query += " AND (location LIKE ? OR process LIKE ?)"
             params.extend([f"%{normalized_location}%", f"%{normalized_location}%"])
         
@@ -246,8 +249,17 @@ class DatabaseManager:
             query += " AND statusCode LIKE ?"
             params.append(f"%{normalized_status_code}%")
         
-        query += " ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
+        if normalized_priority:
+            query += " AND priority LIKE ?"
+            params.append(f"%{normalized_priority}%")
+        
+        # 위치가 입력된 경우 위치 기반 정렬 우선
+        if normalized_location:
+            query += " ORDER BY CASE WHEN location LIKE ? THEN 1 ELSE 2 END, created_at DESC LIMIT ?"
+            params.extend([f"%{normalized_location}%", limit])
+        else:
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
         
         cursor = self.conn.execute(query, params)
         columns = [description[0] for description in cursor.description]
@@ -255,7 +267,7 @@ class DatabaseManager:
         results = []
         for row in cursor.fetchall():
             result = dict(zip(columns, row))
-            result['score'] = 0.85  # 임시 점수 (실제로는 유사도 계산 필요)
+            # 실제 유사도 점수는 추천 엔진에서 계산되므로 임시 점수 제거
             results.append(result)
         
         return results
