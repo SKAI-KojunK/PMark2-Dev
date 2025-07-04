@@ -12,7 +12,7 @@ OpenAI GPT-4o를 활용하여 시나리오를 판단하고, 관련 정보를 추
 """
 
 import re
-import openai
+from openai import OpenAI
 from typing import Dict, List, Optional, Tuple
 from ..config import Config
 from ..models import ParsedInput
@@ -46,7 +46,7 @@ class InputParser:
         - OpenAI 클라이언트 초기화
         - 모델 설정
         """
-        openai.api_key = Config.OPENAI_API_KEY
+        self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         
         # ITEMNO 패턴 (채번 규칙)
         self.itemno_patterns = [
@@ -176,7 +176,7 @@ class InputParser:
             import time
             start_time = time.time()
             
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=Config.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "당신은 설비관리 시스템의 입력 분석 전문가입니다."},

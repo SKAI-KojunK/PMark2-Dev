@@ -11,7 +11,7 @@ PMark1 AI Assistant - LLM 기반 용어 정규화 엔진
 - 프롬프트 수정 시 일관성 있는 응답을 위해 temperature를 낮게 유지
 """
 
-import openai
+from openai import OpenAI
 from typing import Dict, List, Optional, Tuple
 from ..config import Config
 import json
@@ -46,7 +46,7 @@ class LLMNormalizer:
         - OpenAI 클라이언트 초기화
         - 표준 용어 사전 정의 (카테고리별)
         """
-        openai.api_key = Config.OPENAI_API_KEY
+        self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self.model = Config.OPENAI_MODEL
         
         # 표준 용어 사전 (LLM이 참조할 기준)
@@ -130,7 +130,7 @@ class LLMNormalizer:
             prompt = self._create_normalization_prompt(term, category, db_terms)
             
             # LLM 호출 (일관성을 위해 낮은 temperature 사용)
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "당신은 설비관리 시스템의 용어 정규화 전문가입니다."},

@@ -11,7 +11,7 @@ PMark1 AI Assistant - 추천 엔진
 - LLM을 활용한 작업명/상세 생성 기능 포함
 """
 
-import openai
+from openai import OpenAI
 from typing import List, Dict, Optional
 from ..models import ParsedInput, Recommendation
 from ..database import db_manager
@@ -45,7 +45,7 @@ class RecommendationEngine:
         - OpenAI 클라이언트 초기화
         - 로깅 설정
         """
-        openai.api_key = Config.OPENAI_API_KEY
+        self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self.model = Config.OPENAI_MODEL
         self.logger = logging.getLogger(__name__)
     
@@ -159,7 +159,7 @@ class RecommendationEngine:
         try:
             prompt = self._create_work_details_prompt(recommendation, parsed_input)
             
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "당신은 설비관리 시스템의 작업명과 상세 생성 전문가입니다."},
