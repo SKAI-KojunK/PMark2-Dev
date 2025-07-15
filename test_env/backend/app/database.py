@@ -184,11 +184,11 @@ class DatabaseManager:
                     if df_equip.iloc[0, 1] == '설비유형 대분류':
                         df_equip = df_equip.iloc[1:].reset_index(drop=True)
                     
-                    # 컬럼명 매핑 수정: D컬럼(4번째)을 type_code로 사용
-                    # A: id, B: category, C: temp, D: type_code (D컬럼이 표준용어)
-                    df_equip.columns = ['id', 'category', 'temp', 'type_code']
-                    # type_code(D컬럼)를 type_name으로도 사용하여 D컬럼 값이 반환되도록 함
-                    df_equip['type_name'] = df_equip['type_code']
+                    # 컬럼명 매핑 수정: D컬럼(4번째)을 type_name으로 사용
+                    # A: id, B: category, C: temp, D: type_name (D컬럼 전체 값)
+                    df_equip.columns = ['id', 'category', 'temp', 'type_name']
+                    # type_name(D컬럼)을 type_code로도 사용하여 D컬럼 전체 값이 반환되도록 함
+                    df_equip['type_code'] = df_equip['type_name']
                     df_equip = df_equip[['type_code', 'type_name', 'category']].copy()
                     
                     # 빈 값 제거

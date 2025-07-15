@@ -443,6 +443,21 @@ class AccumulatedClues(BaseModel):
             self.location is not None and 
             (self.equipment_type is not None or self.status_code is not None)
         )
+    
+    def has_any_clue(self) -> bool:
+        """
+        누적된 단서가 하나라도 있는지 확인
+        
+        Returns:
+            누적된 단서 존재 여부
+        """
+        return (
+            self.location is not None or
+            self.equipment_type is not None or
+            self.status_code is not None or
+            self.priority is not None or
+            self.itemno is not None
+        )
 
 class EnhancedChatRequest(BaseModel):
     """

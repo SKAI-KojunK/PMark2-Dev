@@ -122,7 +122,9 @@ async def chat_v2(request: EnhancedChatRequest):
         needs_additional_input = len(missing_fields) > 0
         
         # 6단계: 추천 생성 (충분한 정보가 있는 경우에만)
-        if session_state.accumulated_clues.has_sufficient_info():
+        if (session_state.accumulated_clues.has_sufficient_info() or 
+            (parsed_input.scenario == "S2" and accumulated_parsed_input.itemno)):
+            # 시나리오2는 ITEMNO만 있어도 추천 생성 가능
             recommendations = recommender.get_recommendations(accumulated_parsed_input)
             logger.info(f"추천 생성 완료: {len(recommendations)}개")
         else:

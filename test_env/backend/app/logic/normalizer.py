@@ -76,10 +76,9 @@ class LLMNormalizer:
         conn = sqlite3.connect(db_path)
         terms = []
         if category == "equipment":
-            # equipment_types 테이블에서 D컬럼(type_code)의 표준용어 추출
-            # D컬럼 값을 표준용어로 사용 (type_code와 type_name이 동일)
+            # equipment_types 테이블에서 type_name 컬럼(D컬럼 전체 값) 추출
             try:
-                cursor = conn.execute("SELECT DISTINCT type_code FROM equipment_types WHERE type_code IS NOT NULL")
+                cursor = conn.execute("SELECT DISTINCT type_name FROM equipment_types WHERE type_name IS NOT NULL")
                 terms = [row[0] for row in cursor.fetchall() if row[0]]
             except sqlite3.OperationalError:
                 # equipment_types 테이블이 없는 경우 notification_history 사용

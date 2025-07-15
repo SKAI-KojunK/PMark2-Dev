@@ -430,15 +430,54 @@ class InputParser:
             
         except Exception as e:
             print(f"LLM 응답 파싱 오류: {e}")
-            # 폴백: 간단한 추출 로직
-            return {
-                'location': None,
-                'equipment_type': None,
-                'status_code': None,
-                'priority': None,
-                'confidence': 0.5,
-                'reasoning': '파싱 실패로 기본값 사용'
-            }
+            # 폴백: 간단한 추출 로직으로 응답에서 정보 추출
+            return self._extract_from_text_response(response_text)
+    
+    def _extract_from_text_response(self, response_text: str) -> Dict:
+        """
+        텍스트 응답에서 정보 추출 (JSON 파싱 실패 시 폴백)
+        
+        Args:
+            response_text: LLM 응답 텍스트
+            
+        Returns:
+            추출된 데이터 딕셔너리
+        """
+        result = {
+            'location': None,
+            'equipment_type': None,
+            'status_code': None,
+            'priority': None,
+            'confidence': 0.5,
+            'reasoning': '텍스트 파싱으로 추출'
+        }
+        
+        lines = response_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip().lower()
+                value = value.strip()
+                
+                if 'null' in value.lower():
+                    continue
+                
+                if 'location' in key and value:
+                    result['location'] = value
+                elif 'equipment_type' in key and value:
+                    result['equipment_type'] = value
+                elif 'status_code' in key and value:
+                    result['status_code'] = value
+                elif 'priority' in key and value:
+                    result['priority'] = value
+                elif 'confidence' in key and value:
+                    try:
+                        result['confidence'] = float(value)
+                    except:
+                        pass
+        
+        return result
     
     def _normalize_extracted_terms(self, parsed_data: Dict) -> Dict:
         """
@@ -571,11 +610,15 @@ class InputParser:
 - "블로워", "blower" → "Blower"
 
 ## 응답 형식:
-location: [추출된 위치 또는 null]
-equipment_type: [추출된 설비유형 또는 null]
-status_code: [추출된 현상코드 또는 null]
-priority: [추출된 우선순위 또는 null]
-confidence: [신뢰도 점수]
+```json
+{{
+    "location": "추출된 위치 또는 null",
+    "equipment_type": "추출된 설비유형 또는 null",
+    "status_code": "추출된 현상코드 또는 null",
+    "priority": "추출된 우선순위 또는 null",
+    "confidence": 0.9
+}}
+```
 
 ## 예시:
 사용자 입력: "No.1 PE"
@@ -627,11 +670,11 @@ confidence: [신뢰도 점수]
             
         추출 정보:
         - itemno: 작업대상 (설비 고유번호) - 유사도 기반 매칭
-        - status_code: 현상코드
-        - priority: 우선순위 (선택사항)
+        - status_code: 현상코드 (LLM 추출 + 정규화)
+        - priority: 우선순위 (LLM 추출 + 정규화, 기본값: "일반작업")
         """
         try:
-            # 1. 먼저 정확한 패턴 매칭 시도
+            # 1. ITEMNO 추출 (정확한 매칭 → 유사도 매칭)
             itemno = None
             for pattern in self.itemno_patterns:
                 match = re.search(pattern, user_input)
@@ -643,33 +686,37 @@ confidence: [신뢰도 점수]
             if not itemno:
                 itemno = self._find_similar_itemno(user_input)
             
-            # 현상코드 추출 (간단한 키워드 매칭)
-            status_keywords = ['고장', '누설', '작동불량', '소음', '진동', '온도상승', '압력상승', '점검', '정비', '결함', '수명소진', 'leak', 'bolting']
-            status_code = None
-            for keyword in status_keywords:
-                if keyword.lower() in user_input.lower():
-                    status_code = keyword
-                    break
+            # 3. 현상코드와 우선순위 LLM 통합 추출 (시나리오1과 동일한 방식)
+            status_code, priority = self._extract_status_and_priority_with_llm(user_input)
             
-            # 우선순위 추출 (선택사항)
-            priority = None
-            for priority_type, keywords in self.priority_keywords.items():
-                for keyword in keywords:
-                    if keyword.lower() in user_input.lower():
-                        priority = priority_type
-                        break
-                if priority:
-                    break
+            # 4. 추출된 현상코드 정규화
+            normalized_status_code = None
+            if status_code:
+                normalized_status_code, confidence = normalizer.normalize_term(status_code, 'status')
+                # 신뢰도가 낮은 경우 원본 사용
+                if confidence < 0.3:
+                    normalized_status_code = status_code
             
-            # confidence 계산 (정확한 매칭 vs 유사도 매칭)
-            confidence = 0.8 if itemno and self._is_exact_match(user_input, itemno) else 0.6 if itemno else 0.5
+            # 5. 추출된 우선순위 정규화 (기본값 "일반작업" 적용)
+            normalized_priority = "일반작업"  # 기본값
+            if priority:
+                normalized_priority_term, confidence = normalizer.normalize_term(priority, 'priority')
+                # 신뢰도가 충분한 경우 정규화된 값 사용
+                if confidence > 0.3:
+                    normalized_priority = normalized_priority_term
+                else:
+                    # 신뢰도가 낮아도 추출된 우선순위가 있으면 사용
+                    normalized_priority = priority
+            
+            # 6. 신뢰도 점수 계산 개선
+            confidence = self._calculate_scenario_2_confidence(user_input, itemno, normalized_status_code, normalized_priority)
             
             return ParsedInput(
                 scenario="S2",
                 location=None,
                 equipment_type=None,
-                status_code=status_code,
-                priority=priority,
+                status_code=normalized_status_code,
+                priority=normalized_priority,
                 itemno=itemno,
                 confidence=confidence
             )
@@ -731,7 +778,7 @@ confidence: [신뢰도 점수]
     
     def _extract_potential_itemno(self, user_input: str) -> Optional[str]:
         """
-        사용자 입력에서 잠재적인 ITEMNO 패턴 추출
+        사용자 입력에서 잠재적인 ITEMNO 패턴 추출 (개선됨)
         
         Args:
             user_input: 사용자 입력 메시지
@@ -739,25 +786,33 @@ confidence: [신뢰도 점수]
         Returns:
             추출된 패턴 또는 None
         """
-        # 다양한 ITEMNO 패턴 시도
+        # 다양한 ITEMNO 패턴 시도 (따옴표 포함 패턴 추가)
         patterns = [
-            r'\b\d{4,}-\w+',  # 44043-CA1
-            r'\b[A-Z]-\w+',   # Y-MV1035
-            r'\b[A-Z]{2,4}-\w+',  # PE-SE1304B
-            r'\b\d{5,}',      # 5자리 이상 숫자
-            r'\b[A-Z]{2,4}\d+',  # PE12345
+            r'\b\d{4,}-[A-Z]{1,4}\d*-\d+"-[A-Z]\b',  # 44043-CA1-6"-P (따옴표 포함)
+            r'\b\d{4,}-[A-Z]{1,4}\d*-\d+-[A-Z]\b',   # 44043-CA1-6-P (일반)
+            r'\b\d{4,}-\w+',                          # 44043-CA1
+            r'\b[A-Z]-\w+\d+',                        # Y-MV1035  
+            r'\b[A-Z]{2,4}-\w+-\d{2}\b',              # SW-CV1307-02
+            r'\b[A-Z]{2,4}-\w+',                      # PE-SE1304B
+            r'\b\d{5,}',                              # 5자리 이상 숫자
+            r'\b[A-Z]{2,4}\d+',                       # PE12345
+            r'"[^"]*"',                               # 따옴표로 둘러싸인 모든 패턴
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, user_input)
+            match = re.search(pattern, user_input, re.IGNORECASE)
             if match:
-                return match.group(0)
+                extracted = match.group(0)
+                # 따옴표로 둘러싸인 경우 따옴표 제거
+                if extracted.startswith('"') and extracted.endswith('"'):
+                    extracted = extracted[1:-1]
+                return extracted
         
         return None
     
     def _calculate_similarity(self, input_itemno: str, db_itemno: str) -> float:
         """
-        두 ITEMNO 간의 유사도 계산
+        두 ITEMNO 간의 유사도 계산 (개선됨)
         
         Args:
             input_itemno: 사용자 입력 ITEMNO
@@ -766,27 +821,78 @@ confidence: [신뢰도 점수]
         Returns:
             유사도 점수 (0.0 ~ 1.0)
         """
-        # 기본 문자열 유사도
-        base_similarity = SequenceMatcher(None, input_itemno.lower(), db_itemno.lower()).ratio()
+        # 특수문자 정규화 (따옴표, 공백 등 제거)
+        normalized_input = self._normalize_itemno_for_comparison(input_itemno)
+        normalized_db = self._normalize_itemno_for_comparison(db_itemno)
         
-        # 추가 규칙들
+        # 1. 정규화된 정확한 매칭
+        if normalized_input == normalized_db:
+            return 1.0
+        
+        # 2. 기본 문자열 유사도 (정규화된 문자열로)
+        base_similarity = SequenceMatcher(None, normalized_input, normalized_db).ratio()
+        
+        # 3. 추가 규칙들
         bonus = 0.0
         
-        # 1. 정확한 매칭
-        if input_itemno.lower() == db_itemno.lower():
-            bonus = 0.3
+        # 부분 매칭 (포함 관계)
+        if normalized_input in normalized_db or normalized_db in normalized_input:
+            bonus += 0.2
         
-        # 2. 부분 매칭 (포함 관계)
-        elif input_itemno.lower() in db_itemno.lower() or db_itemno.lower() in input_itemno.lower():
-            bonus = 0.2
+        # 숫자 부분 매칭 (핵심 부분)
+        input_numbers = re.findall(r'\d+', normalized_input)
+        db_numbers = re.findall(r'\d+', normalized_db)
+        if input_numbers and db_numbers:
+            number_matches = sum(1 for in_num in input_numbers 
+                               for db_num in db_numbers 
+                               if in_num == db_num or in_num in db_num or db_num in in_num)
+            if number_matches > 0:
+                bonus += 0.3 * (number_matches / max(len(input_numbers), len(db_numbers)))
         
-        # 3. 숫자 부분이 동일한 경우
-        input_numbers = re.findall(r'\d+', input_itemno)
-        db_numbers = re.findall(r'\d+', db_itemno)
-        if input_numbers and db_numbers and any(in_num in db_num for in_num in input_numbers for db_num in db_numbers):
-            bonus = 0.1
+        # 문자 부분 매칭
+        input_letters = re.findall(r'[A-Za-z]+', normalized_input)
+        db_letters = re.findall(r'[A-Za-z]+', normalized_db)
+        if input_letters and db_letters:
+            letter_matches = sum(1 for in_letter in input_letters 
+                               for db_letter in db_letters 
+                               if in_letter.lower() == db_letter.lower())
+            if letter_matches > 0:
+                bonus += 0.2 * (letter_matches / max(len(input_letters), len(db_letters)))
+        
+        # 패턴 구조 유사성 (하이픈 위치 등)
+        input_pattern = re.sub(r'[A-Za-z]+', 'L', re.sub(r'\d+', 'N', normalized_input))
+        db_pattern = re.sub(r'[A-Za-z]+', 'L', re.sub(r'\d+', 'N', normalized_db))
+        if input_pattern == db_pattern:
+            bonus += 0.1
         
         return min(1.0, base_similarity + bonus)
+    
+    def _normalize_itemno_for_comparison(self, itemno: str) -> str:
+        """
+        ITEMNO를 비교용으로 정규화 (특수문자 제거)
+        
+        Args:
+            itemno: 원본 ITEMNO
+            
+        Returns:
+            정규화된 ITEMNO
+        """
+        if not itemno:
+            return ""
+        
+        # 1. 소문자 변환
+        normalized = itemno.lower()
+        
+        # 2. 따옴표 제거 (인치 표시 등)
+        normalized = re.sub(r'["\'`]', '', normalized)
+        
+        # 3. 연속된 공백을 하나로 통합
+        normalized = re.sub(r'\s+', ' ', normalized)
+        
+        # 4. 앞뒤 공백 제거
+        normalized = normalized.strip()
+        
+        return normalized
     
     def _is_exact_match(self, user_input: str, itemno: str) -> bool:
         """
@@ -806,6 +912,197 @@ confidence: [신뢰도 점수]
                 return True
         
         return False
+
+    def _extract_status_and_priority_with_llm(self, user_input: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        시나리오 2용 LLM 기반 현상코드와 우선순위 통합 추출
+        
+        Args:
+            user_input: 사용자 입력 메시지
+            
+        Returns:
+            (추출된 현상코드, 추출된 우선순위) 튜플
+        """
+        try:
+            # LLM 프롬프트 생성
+            prompt = f"""
+다음 사용자 입력에서 설비 현상코드와 우선순위를 추출해주세요.
+
+**사용자 입력**: {user_input}
+
+**추출 대상**:
+1. 현상코드: 설비의 상태나 문제점을 나타내는 표현
+   - 예시: 고장, 누설, 작동불량, 소음, 진동, 온도상승, 압력상승, 점검, 정비, 결함, 수명소진, leak, bolting 등
+
+2. 우선순위: 작업의 긴급도를 나타내는 표현 (선택사항)
+   - 긴급작업: "긴급", "긴급작업", "최우선", "urgent", "emergency", "즉시", "바로"
+   - 우선작업: "우선", "우선작업", "priority", "high priority", "먼저", "중요"
+   - 일반작업: "일반", "일반작업", "normal", "regular", "보통"
+   - 주기작업: "주기", "주기작업", "정기", "PM", "TA", "점검"
+
+**추출 규칙**:
+1. 현상코드: 설비 상태나 문제점을 직접적으로 표현하는 단어나 구문 추출
+2. 우선순위: 사용자가 명시적으로 언급한 경우에만 추출
+3. 여러 현상이 언급된 경우 가장 주요한 현상 하나만 추출
+4. 현상/우선순위와 관련 없는 단어는 제외 (ITEMNO, 위치, 작업 등)
+5. 해당 정보가 없는 경우 "None" 반환
+
+**응답 형식**:
+```json
+{{
+    "status_code": "추출된 현상코드 또는 None",
+    "priority": "추출된 우선순위 또는 None"
+}}
+```
+
+**예시**:
+- 입력: "44043-CA1-6"-P, Leak 볼팅 작업" → 출력: {{"status_code": "leak", "priority": "None"}}
+- 입력: "Y-MV1035. 고장" → 출력: {{"status_code": "고장", "priority": "None"}}
+- 입력: "SW-CV1307-02, 소음 발생, 우선작업" → 출력: {{"status_code": "소음", "priority": "우선작업"}}
+- 입력: "44043-CA1-6"-P, 결함, 긴급작업" → 출력: {{"status_code": "결함", "priority": "긴급작업"}}
+- 입력: "PE-SE1304B" → 출력: {{"status_code": "None", "priority": "None"}}
+"""
+            
+            # LLM 호출
+            response = self.client.chat.completions.create(
+                model=Config.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "당신은 설비관리 시스템의 현상코드와 우선순위 추출 전문가입니다."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=150
+            )
+            
+            result = response.choices[0].message.content.strip()
+            
+            # 응답 파싱
+            parsed_result = self._parse_status_priority_response(result)
+            
+            status_code = parsed_result.get("status_code")
+            priority = parsed_result.get("priority")
+            
+            # "None" 문자열을 실제 None으로 변환
+            if status_code == "None":
+                status_code = None
+            if priority == "None":
+                priority = None
+            
+            return status_code, priority
+            
+        except Exception as e:
+            print(f"LLM 현상코드/우선순위 추출 오류: {e}")
+            # 폴백: 기존 방식으로 처리
+            return self._extract_status_and_priority_fallback(user_input)
+    
+    def _parse_status_priority_response(self, response_text: str) -> Dict:
+        """
+        현상코드/우선순위 추출 응답 파싱
+        
+        Args:
+            response_text: LLM 응답 텍스트
+            
+        Returns:
+            파싱된 딕셔너리
+        """
+        try:
+            # JSON 부분 추출
+            json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(1))
+            else:
+                # JSON 블록이 없는 경우 전체 텍스트를 JSON으로 파싱 시도
+                data = json.loads(response_text)
+            
+            return data
+            
+        except Exception as e:
+            print(f"현상코드/우선순위 응답 파싱 오류: {e}")
+            return {"status_code": "None", "priority": "None"}
+    
+    def _extract_status_and_priority_fallback(self, user_input: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        LLM 실패 시 폴백용 현상코드/우선순위 추출
+        
+        Args:
+            user_input: 사용자 입력 메시지
+            
+        Returns:
+            (추출된 현상코드, 추출된 우선순위) 튜플
+        """
+        # 현상코드 추출
+        status_keywords = [
+            '고장', '누설', '작동불량', '소음', '진동', '온도상승', '압력상승', 
+            '점검', '정비', '결함', '수명소진', 'leak', 'bolting'
+        ]
+        
+        status_code = None
+        for keyword in status_keywords:
+            if keyword.lower() in user_input.lower():
+                status_code = keyword
+                break
+        
+        # 우선순위 추출
+        priority = None
+        for priority_type, keywords in self.priority_keywords.items():
+            for keyword in keywords:
+                if keyword.lower() in user_input.lower():
+                    priority = priority_type
+                    break
+            if priority:
+                break
+        
+        return status_code, priority
+
+    def _extract_status_code_with_llm(self, user_input: str) -> Optional[str]:
+        """
+        시나리오 2용 LLM 기반 현상코드 추출 (기존 메서드 유지 - 호환성)
+        
+        Args:
+            user_input: 사용자 입력 메시지
+            
+        Returns:
+            추출된 현상코드 또는 None
+        """
+        # 통합 메서드 호출
+        status_code, _ = self._extract_status_and_priority_with_llm(user_input)
+        return status_code
+
+    def _calculate_scenario_2_confidence(self, user_input: str, itemno: str, status_code: str, priority: str) -> float:
+        """
+        시나리오 2용 신뢰도 점수 계산
+        
+        Args:
+            user_input: 사용자 입력
+            itemno: 추출된 ITEMNO
+            status_code: 추출된 현상코드
+            priority: 추출된 우선순위
+            
+        Returns:
+            신뢰도 점수 (0.0 ~ 1.0)
+        """
+        confidence = 0.0
+        
+        # ITEMNO 존재 여부 (기본 점수)
+        if itemno:
+            if self._is_exact_match(user_input, itemno):
+                confidence += 0.5  # 정확한 매칭
+            else:
+                confidence += 0.3  # 유사도 매칭
+        
+        # 현상코드 존재 여부
+        if status_code:
+            confidence += 0.3
+        
+        # 우선순위 존재 여부 (보너스)
+        if priority:
+            confidence += 0.1
+        
+        # 입력 복잡도 고려
+        if ',' in user_input:  # 여러 정보가 포함된 경우
+            confidence += 0.1
+        
+        return min(1.0, confidence)
 
     def _parse_default_scenario(self, user_input: str) -> ParsedInput:
         """
