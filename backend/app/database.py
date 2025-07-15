@@ -68,6 +68,7 @@ class DatabaseManager:
                 itemno TEXT NOT NULL,
                 process TEXT,
                 location TEXT,
+                cost_center TEXT,
                 equipType TEXT,
                 statusCode TEXT,
                 work_title TEXT,
@@ -102,6 +103,7 @@ class DatabaseManager:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_location ON notification_history(location)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_statusCode ON notification_history(statusCode)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_process ON notification_history(process)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_cost_center ON notification_history(cost_center)")
         
         self.conn.commit()
         self.logger.info("데이터베이스 초기화 완료")
@@ -118,6 +120,7 @@ class DatabaseManager:
                     '작업대상': 'itemno',
                     'Plant': 'process', 
                     'Location': 'location',
+                    'Cost Center': 'cost_center',  # 공정명 표시용
                     '설비유형': 'equipType',
                     '현상코드': 'statusCode',
                     '작업명': 'work_title',
@@ -128,7 +131,7 @@ class DatabaseManager:
                 df_history = df_history.rename(columns=column_mapping)
                 
                 # 필요한 컬럼만 선택하고 나머지는 기본값으로 설정
-                required_columns = ['itemno', 'process', 'location', 'equipType', 'statusCode', 'work_title', 'priority']
+                required_columns = ['itemno', 'process', 'location', 'cost_center', 'equipType', 'statusCode', 'work_title', 'priority']
                 for col in required_columns:
                     if col not in df_history.columns:
                         df_history[col] = ''
@@ -148,14 +151,55 @@ class DatabaseManager:
             # 현상코드 로드
             if os.path.exists(Config.STATUS_CODE_FILE):
                 df_status = pd.read_excel(Config.STATUS_CODE_FILE)
-                df_status.to_sql('status_codes', self.conn, if_exists='replace', index=False)
-                self.logger.info(f"현상코드 로드 완료: {len(df_status)} 건")
+                # 컬럼명 정리 (공백 제거)
+                df_status.columns = [c.strip() for c in df_status.columns]
+                self.logger.info(f"현상코드 파일 로드: {len(df_status)} 건, 컬럼: {df_status.columns.tolist()}")
+                
+                # '현상코드' 컬럼만 추출하여 표준 테이블 구조로 변환
+                if '현상코드' in df_status.columns:
+                    # 빈 값 제거
+                    df_status = df_status.dropna(subset=['현상코드'])
+                    df_status = df_status[df_status['현상코드'].str.strip() != '']
+                    
+                    # 표준 테이블 구조로 변환
+                    status_codes = []
+                    for _, row in df_status.iterrows():
+                        code = row['현상코드'].strip()
+                        status_codes.append({
+                            'code': code,
+                            'description': code,  # 설명은 코드와 동일
+                            'category': '표준'    # 기본 카테고리
+                        })
+                    
+                    # DataFrame으로 변환 후 DB에 저장
+                    df_status_final = pd.DataFrame(status_codes)
+                    df_status_final.to_sql('status_codes', self.conn, if_exists='replace', index=False)
+                    self.logger.info(f"현상코드 로드 완료: {len(df_status_final)} 건")
+                else:
+                    self.logger.error("현상코드 파일에 '현상코드' 컬럼이 없습니다.")
+                    raise RuntimeError("현상코드 파일에 '현상코드' 컬럼이 없습니다.")
             
-            # 설비유형 로드
+            # 설비유형 자료 로드 (두 번째 시트)
             if os.path.exists(Config.EQUIPMENT_TYPE_FILE):
-                df_equip = pd.read_excel(Config.EQUIPMENT_TYPE_FILE)
-                df_equip.to_sql('equipment_types', self.conn, if_exists='replace', index=False)
-                self.logger.info(f"설비유형 로드 완료: {len(df_equip)} 건")
+                try:
+                    # 두 번째 시트 로드 (sheet_name=1), header=None
+                    df_equip = pd.read_excel(Config.EQUIPMENT_TYPE_FILE, sheet_name=1, header=None)
+                    # row 2(인덱스 2)부터가 실제 데이터
+                    df_equip = df_equip.iloc[2:].reset_index(drop=True)
+                    # 컬럼명 지정: idx, category, type_code, type_name
+                    df_equip.columns = ['idx', 'category', 'type_code', 'type_name']
+                    df_equip = df_equip[['type_code', 'type_name', 'category']]
+                    df_equip.to_sql('equipment_types', self.conn, if_exists='replace', index=False)
+                    self.logger.info(f"설비유형 자료 로드 완료: {len(df_equip)} 건")
+                except Exception as e:
+                    self.logger.warning(f"설비유형 자료 로드 실패 (두 번째 시트): {e}")
+                    # 첫 번째 시트로 재시도
+                    try:
+                        df_equip = pd.read_excel(Config.EQUIPMENT_TYPE_FILE, sheet_name=0)
+                        df_equip.to_sql('equipment_types', self.conn, if_exists='replace', index=False)
+                        self.logger.info(f"설비유형 자료 로드 완료 (첫 번째 시트): {len(df_equip)} 건")
+                    except Exception as e2:
+                        self.logger.error(f"설비유형 자료 로드 완전 실패: {e2}")
             
         except Exception as e:
             self.logger.error(f"Excel 데이터 로드 중 오류: {e}")
@@ -229,7 +273,7 @@ class DatabaseManager:
         normalized_priority = self.normalize_term(priority, "priority") if priority else None
         
         query = '''
-            SELECT itemno, process, location, equipType, statusCode, work_title, work_details, priority
+            SELECT itemno, process, location, cost_center, equipType, statusCode, work_title, work_details, priority
             FROM notification_history
             WHERE 1=1
         '''
@@ -289,7 +333,7 @@ class DatabaseManager:
     def search_by_itemno(self, itemno: str, limit: int = 15) -> List[Dict[str, Any]]:
         """ITEMNO로 검색"""
         query = '''
-            SELECT itemno, process, location, equipType, statusCode, work_title, work_details, priority
+            SELECT itemno, process, location, cost_center, equipType, statusCode, work_title, work_details, priority
             FROM notification_history
             WHERE itemno LIKE ?
             ORDER BY created_at DESC LIMIT ?

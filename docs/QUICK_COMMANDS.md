@@ -5,13 +5,13 @@
 ### 자동 스크립트 사용 (권장)
 ```bash
 # 시스템 시작
-./scripts/start_pmark1.sh
+./scripts/start_pmark2.sh
 
 # 시스템 종료
-./scripts/stop_pmark1.sh
+./scripts/stop_pmark2.sh
 
 # 시스템 상태 확인
-./scripts/status_pmark1.sh
+./scripts/status_pmark2.sh
 ```
 
 ### 수동 명령어
@@ -50,7 +50,7 @@ curl http://localhost:3001
 
 ### 프로세스 강제 종료
 ```bash
-# 모든 PMark1 프로세스 종료
+# 모든 PMark2 프로세스 종료
 pkill -f "python run.py"
 pkill -f "python start_frontend.py"
 pkill -f "uvicorn"

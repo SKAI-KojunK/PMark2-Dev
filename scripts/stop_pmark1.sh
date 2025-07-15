@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # PMark2 시스템 종료 스크립트
-# 사용법: ./scripts/stop_pmark1.sh
+# 사용법: ./scripts/stop_pmark2.sh
 
 echo "🛑 PMark2 AI Assistant 시스템 종료 중..."
 
@@ -9,18 +9,18 @@ echo "🛑 PMark2 AI Assistant 시스템 종료 중..."
 cd /Users/YMARX/Dropbox/2025_ECMiner/C_P02_SKAI/03_진행/PMark2-Dev
 
 # 저장된 프로세스 ID 확인
-if [ -f /tmp/pmark1_backend.pid ]; then
-    BACKEND_PID=$(cat /tmp/pmark1_backend.pid)
+if [ -f /tmp/pmark2_backend.pid ]; then
+    BACKEND_PID=$(cat /tmp/pmark2_backend.pid)
     echo "🔧 백엔드 서버 종료 중 (PID: $BACKEND_PID)..."
     kill $BACKEND_PID 2>/dev/null
-    rm -f /tmp/pmark1_backend.pid
+    rm -f /tmp/pmark2_backend.pid
 fi
 
-if [ -f /tmp/pmark1_frontend.pid ]; then
-    FRONTEND_PID=$(cat /tmp/pmark1_frontend.pid)
+if [ -f /tmp/pmark2_frontend.pid ]; then
+    FRONTEND_PID=$(cat /tmp/pmark2_frontend.pid)
     echo "🌐 프론트엔드 서버 종료 중 (PID: $FRONTEND_PID)..."
     kill $FRONTEND_PID 2>/dev/null
-    rm -f /tmp/pmark1_frontend.pid
+    rm -f /tmp/pmark2_frontend.pid
 fi
 
 # 프로세스 이름으로 추가 종료

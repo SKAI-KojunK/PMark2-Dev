@@ -79,6 +79,11 @@ class RecommendationEngine:
         - 새로운 추천 기준 추가 가능
         """
         try:
+            # 추천 조건 확인: 위치, 설비유형, 현상코드가 모두 있어야 추천
+            if not all([parsed_input.location, parsed_input.equipment_type, parsed_input.status_code]):
+                self.logger.info("추천 조건 미충족: 위치, 설비유형, 현상코드가 모두 필요합니다.")
+                return []
+            
             # 데이터베이스에서 유사한 알림 검색
             similar_notifications = db_manager.search_similar_notifications(
                 equip_type=parsed_input.equipment_type,
@@ -106,6 +111,7 @@ class RecommendationEngine:
                         itemno=notification['itemno'],
                         process=notification['process'],
                         location=notification['location'],
+                        cost_center=notification.get('cost_center'),
                         equipType=notification['equipType'],
                         statusCode=notification['statusCode'],
                         priority=notification['priority'],
@@ -118,8 +124,25 @@ class RecommendationEngine:
             # 유사도 점수 순으로 정렬
             recommendations.sort(key=lambda x: x.score, reverse=True)
             
-            # 상위 추천 항목만 반환
-            top_recommendations = recommendations[:limit]
+            # 요구사항에 따른 결과 처리
+            total_count = len(recommendations)
+            self.logger.info(f"총 {total_count}개의 추천 항목 발견")
+            
+            if total_count == 0:
+                return []
+            elif 1 <= total_count <= 5:
+                # 1-5개: 해당 값만 반환
+                top_recommendations = recommendations
+                self.logger.info(f"1-5개 범위: {total_count}개 모두 반환")
+            elif 6 <= total_count <= 15:
+                # 6-15개: 5개씩 묶어서 순차적으로 반환 (첫 번째 배치)
+                top_recommendations = recommendations[:5]
+                self.logger.info(f"6-15개 범위: 첫 번째 배치 5개 반환 (총 {total_count}개 중)")
+            else:
+                # 15개 이상: 아이템 넘버 입력 요청을 위해 특별한 처리
+                # 일단 상위 15개로 제한하되, 추가 정보를 포함
+                top_recommendations = recommendations[:15]
+                self.logger.warning(f"15개 이상 ({total_count}개): 아이템 넘버 입력 요청 필요")
             
             # LLM을 사용하여 작업명과 상세 생성 (없는 경우)
             for rec in top_recommendations:
@@ -200,7 +223,7 @@ class RecommendationEngine:
 다음 설비관리 작업에 대한 작업명과 상세를 생성해주세요.
 
 **설비 정보**:
-- 공정: {recommendation.process}
+- 공정: {recommendation.cost_center if recommendation.cost_center else recommendation.process}
 - 위치: {recommendation.location}
 - 설비유형: {recommendation.equipType}
 - 현상코드: {recommendation.statusCode}
@@ -292,6 +315,7 @@ class RecommendationEngine:
                     itemno=notification['itemno'],
                     process=notification['process'],
                     location=notification['location'],
+                    cost_center=notification.get('cost_center'),
                     equipType=notification['equipType'],
                     statusCode=notification['statusCode'],
                     priority=notification['priority'],

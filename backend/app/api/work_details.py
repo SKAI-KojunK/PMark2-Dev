@@ -247,7 +247,7 @@ def _create_work_details_prompt(recommendation, user_message: str) -> str:
 다음 설비관리 작업에 대한 작업명과 상세를 생성해주세요.
 
 **설비 정보**:
-- 공정: {recommendation.process}
+- 공정: {recommendation.cost_center if recommendation.cost_center else recommendation.process}
 - 위치: {recommendation.location}
 - 설비유형: {recommendation.equipType}
 - 현상코드: {recommendation.statusCode}

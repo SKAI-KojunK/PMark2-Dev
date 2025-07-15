@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PMark1 Frontend Server - Multi-user Support
+PMark2 Frontend Server - Multi-user Support
 """
 
 import http.server
@@ -124,7 +124,7 @@ def main():
     
     local_ip = get_local_ip()
     
-    print(f"🚀 PMark1 Frontend Server Starting...")
+    print(f"🚀 PMark2 Frontend Server Starting...")
     print(f"📁 Current directory: {os.getcwd()}")
     print(f"🌐 Server running on:")
     print(f"   • Local:    http://localhost:{port}")

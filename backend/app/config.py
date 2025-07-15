@@ -24,10 +24,16 @@ class Config:
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/sample_notifications.db")
     SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "./data/sample_notifications.db")
     
-    # 파일 경로 설정
-    NOTIFICATION_HISTORY_FILE = os.getenv("NOTIFICATION_HISTORY_FILE", "../[Noti이력].xlsx")
-    STATUS_CODE_FILE = os.getenv("STATUS_CODE_FILE", "../[현상코드].xlsx")
-    EQUIPMENT_TYPE_FILE = os.getenv("EQUIPMENT_TYPE_FILE", "../설비유형 자료_20250522.xlsx")
+    # 파일 경로 설정 (절대 경로 사용)
+    # 현재 파일(backend/app/config.py)에서 프로젝트 루트까지의 경로 계산
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))  # backend/app/
+    BACKEND_DIR = os.path.dirname(CURRENT_DIR)  # backend/
+    PROJECT_ROOT = os.path.dirname(BACKEND_DIR)  # PMark2-Dev/
+    
+    # 절대 경로로 파일 경로 설정
+    NOTIFICATION_HISTORY_FILE = os.getenv("NOTIFICATION_HISTORY_FILE") or os.path.join(PROJECT_ROOT, "[Noti이력].xlsx")
+    STATUS_CODE_FILE = os.getenv("STATUS_CODE_FILE") or os.path.join(PROJECT_ROOT, "[현상코드].xlsx")
+    EQUIPMENT_TYPE_FILE = os.getenv("EQUIPMENT_TYPE_FILE") or os.path.join(PROJECT_ROOT, "설비유형 자료_20250522.xlsx")
     
     # 벡터 DB 설정
     VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", "./data/vector_db")
