@@ -208,6 +208,7 @@ async def _handle_scenario(parsed_input: ParsedInput, user_message: str, convers
     시나리오별 처리 로직
     
     Args:
+        fastapi_request: FastAPI Request 객체
         parsed_input: 파싱된 입력 데이터
         user_message: 원본 사용자 메시지
         conversation_history: 대화 히스토리
@@ -238,6 +239,7 @@ async def _handle_scenario_1(parsed_input: ParsedInput, user_message: str, conve
     시나리오 1 처리: 자연어 작업 요청
     
     Args:
+        fastapi_request: FastAPI Request 객체
         parsed_input: 파싱된 입력 데이터
         user_message: 원본 사용자 메시지
         conversation_history: 대화 히스토리
@@ -260,7 +262,10 @@ async def _handle_scenario_1(parsed_input: ParsedInput, user_message: str, conve
     missing_fields = _check_missing_fields(parsed_input)
     
     # 추천 엔진 호출
-    recommendations = recommender.get_recommendations(parsed_input)
+    if not missing_fields:
+        recommendations = recommender.get_recommendations(parsed_input)
+    else:
+        recommendations = []
     
     # 응답 메시지 생성
     message = _create_response_message(parsed_input, recommendations, missing_fields)
@@ -275,9 +280,10 @@ async def _handle_scenario_1(parsed_input: ParsedInput, user_message: str, conve
 
 async def _handle_scenario_2(parsed_input: ParsedInput, user_message: str, conversation_history: list) -> ChatResponse:
     """
-    시나리오 2 처리: ITEMNO 작업 상세 요청
+    시나리오 2 처리: ITEMNO 기반 작업 상세 요청
     
     Args:
+        fastapi_request: FastAPI Request 객체
         parsed_input: 파싱된 입력 데이터
         user_message: 원본 사용자 메시지
         conversation_history: 대화 히스토리
@@ -286,47 +292,34 @@ async def _handle_scenario_2(parsed_input: ParsedInput, user_message: str, conve
         ChatResponse: 특정 작업 정보가 포함된 응답
         
     처리 로직:
-    1. ITEMNO로 특정 작업 조회
-    2. 작업 상세 정보 제공
-    3. 관련 추천 항목 제공
-    
-    담당자 수정 가이드:
-    - ITEMNO 검증 로직 추가 가능
-    - 관련 작업 추천 로직 개선 가능
-    - 작업 이력 조회 기능 추가 가능
+    1. ITEMNO 유효성 검증
+    2. 추천 엔진 호출
+    3. 응답 메시지 생성
     """
+    if parsed_input.itemno:
+        recommendations = recommender.get_recommendations(parsed_input, limit=1)
+    else:
+        recommendations = []
     
-    if not parsed_input.itemno:
-        return ChatResponse(
-            message="ITEMNO를 찾을 수 없습니다. 올바른 ITEMNO를 입력해주세요.",
-            recommendations=[],
-            parsed_input=parsed_input,
-            needs_additional_input=True,
-            missing_fields=["itemno"]
-        )
-    
-    # ITEMNO로 특정 작업 조회
-    specific_recommendation = recommender.get_recommendation_by_itemno(parsed_input.itemno)
-    
-    if specific_recommendation:
+    if recommendations:
         # 관련 추천 항목도 함께 제공
         related_recommendations = recommender.get_recommendations(parsed_input, limit=3)
         
         message = f"ITEMNO {parsed_input.itemno}에 대한 작업 정보입니다:\n\n"
-        message += f"• 공정: {specific_recommendation.process}\n"
-        message += f"• 위치: {specific_recommendation.location}\n"
-        message += f"• 설비유형: {specific_recommendation.equipType}\n"
-        message += f"• 현상코드: {specific_recommendation.statusCode}\n"
-        message += f"• 우선순위: {specific_recommendation.priority}\n\n"
+        message += f"• 공정: {recommendations[0].process}\n" # Assuming recommendations[0] is the specific one
+        message += f"• 위치: {recommendations[0].location}\n" # Assuming recommendations[0] is the specific one
+        message += f"• 설비유형: {recommendations[0].equipType}\n" # Assuming recommendations[0] is the specific one
+        message += f"• 현상코드: {recommendations[0].statusCode}\n" # Assuming recommendations[0] is the specific one
+        message += f"• 우선순위: {recommendations[0].priority}\n\n" # Assuming recommendations[0] is the specific one
         
-        if specific_recommendation.work_title:
-            message += f"작업명: {specific_recommendation.work_title}\n"
-        if specific_recommendation.work_details:
-            message += f"작업상세: {specific_recommendation.work_details}\n"
+        if recommendations[0].work_title:
+            message += f"작업명: {recommendations[0].work_title}\n" # Assuming recommendations[0] is the specific one
+        if recommendations[0].work_details:
+            message += f"작업상세: {recommendations[0].work_details}\n" # Assuming recommendations[0] is the specific one
         
         return ChatResponse(
             message=message,
-            recommendations=[specific_recommendation] + related_recommendations,
+            recommendations=[recommendations[0]] + related_recommendations,
             parsed_input=parsed_input,
             needs_additional_input=False,
             missing_fields=[]
@@ -342,9 +335,10 @@ async def _handle_scenario_2(parsed_input: ParsedInput, user_message: str, conve
 
 async def _handle_default_scenario(parsed_input: ParsedInput, user_message: str, conversation_history: list) -> ChatResponse:
     """
-    기본 시나리오 처리: 인식되지 않는 입력
+    시나리오 3 (기본) 처리: 정보 부족 안내
     
     Args:
+        fastapi_request: FastAPI Request 객체
         parsed_input: 파싱된 입력 데이터
         user_message: 원본 사용자 메시지
         conversation_history: 대화 히스토리

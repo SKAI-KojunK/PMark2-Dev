@@ -12,6 +12,8 @@ PMark1 AI Assistant - 추천 엔진
 """
 
 from openai import OpenAI
+import pandas as pd
+import os
 from typing import List, Dict, Optional
 from ..models import ParsedInput, Recommendation
 from ..database import db_manager
@@ -48,7 +50,50 @@ class RecommendationEngine:
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self.model = Config.OPENAI_MODEL
         self.logger = logging.getLogger(__name__)
-    
+        self.noti_history_df = None
+        self.itemno_col = None # '작업대상' 컬럼을 저장할 변수
+        self.cost_center_col = None
+        self._load_noti_history()
+
+    def _find_column(self, df_columns, keywords):
+        """데이터프레임 컬럼 목록에서 키워드와 일치하는 컬럼명을 찾습니다."""
+        for col in df_columns:
+            # 컬럼명을 소문자로 만들고 공백, '.'을 제거하여 비교합니다.
+            normalized_col = col.lower().replace(" ", "").replace(".", "")
+            if all(keyword.lower() in normalized_col for keyword in keywords):
+                return col
+        return None
+
+    def _load_noti_history(self):
+        """[Noti이력].xlsx 파일을 로드하여 Cost Center 조회를 준비합니다."""
+        try:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), *(['..'] * 4)))
+            file_path = os.path.join(project_root, '[Noti이력].xlsx')
+            
+            if not os.path.exists(file_path):
+                self.logger.warning(f"Notification history file not found at '{file_path}'. Cost center lookup will be disabled.")
+                return
+
+            self.noti_history_df = pd.read_excel(file_path, engine='openpyxl')
+            
+            # 컬럼명을 유연하게 찾습니다.
+            self.itemno_col = self._find_column(self.noti_history_df.columns, ['작업대상'])
+            self.cost_center_col = self._find_column(self.noti_history_df.columns, ['cost', 'center'])
+
+            if not self.itemno_col or not self.cost_center_col:
+                self.logger.warning(f"Required columns not found in Excel. Itemno Col ('작업대상'): '{self.itemno_col}', Cost Center Col: '{self.cost_center_col}'. Cost center lookup will be disabled.")
+                self.noti_history_df = None
+                return
+            
+            self.logger.info(f"Successfully mapped columns -> Itemno: '{self.itemno_col}', Cost Center: '{self.cost_center_col}'")
+            
+            # 찾은 컬럼의 타입을 문자열로 변환하여 조회 시 타입 에러를 방지합니다.
+            self.noti_history_df[self.itemno_col] = self.noti_history_df[self.itemno_col].astype(str)
+
+        except Exception as e:
+            self.logger.error(f"Error loading or processing notification history file: {e}")
+            self.noti_history_df = None
+
     def get_recommendations(self, parsed_input: ParsedInput, limit: int = 5) -> List[Recommendation]:
         """
         파싱된 입력을 기반으로 추천 목록 생성
@@ -121,10 +166,13 @@ class RecommendationEngine:
                     db_priority = notification.get('priority')
                     final_priority = db_priority if db_priority else '일반작업'
                     
+                    # Cost Center 조회
+                    cost_center = self._get_cost_center(notification.get('itemno'))
+                    
                     # None 값들을 기본값으로 처리 (더 안전한 처리)
                     recommendation = Recommendation(
                         itemno=notification.get('itemno') or '',
-                        process=notification.get('process') or '',
+                        process=cost_center or notification.get('process') or '미확인',
                         location=notification.get('location') or '',
                         equipType=notification.get('equipType') or '미확인',
                         statusCode=notification.get('statusCode') or '미확인',
@@ -155,7 +203,23 @@ class RecommendationEngine:
         except Exception as e:
             self.logger.error(f"추천 생성 오류: {e}")
             return []
-    
+            
+    def _get_cost_center(self, itemno: str) -> Optional[str]:
+        """주어진 itemno에 해당하는 Cost Center를 조회합니다."""
+        if self.noti_history_df is None or not itemno or not self.itemno_col or not self.cost_center_col:
+            return None
+        
+        try:
+            # '작업대상' 컬럼(itemno_col)을 기준으로 조회합니다.
+            match = self.noti_history_df[self.noti_history_df[self.itemno_col] == itemno]
+            if not match.empty:
+                cost_center = match.iloc[0][self.cost_center_col]
+                return str(cost_center) if pd.notna(cost_center) else None
+        except Exception as e:
+            self.logger.error(f"Error during cost center lookup for itemno {itemno}: {e}")
+        
+        return None
+
     def _generate_work_details(self, recommendation: Recommendation, parsed_input: ParsedInput) -> Optional[Dict]:
         """
         LLM을 사용하여 작업명과 상세 생성

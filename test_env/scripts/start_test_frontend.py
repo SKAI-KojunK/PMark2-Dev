@@ -46,8 +46,9 @@ def detect_backend_port():
     for port in test_ports:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(1)
-                result = s.connect_ex(('localhost', port))
+                s.settimeout(0.5) # 타임아웃을 짧게 조정
+                # 'localhost' 대신 '127.0.0.1'을 사용하여 감지 안정성 향상
+                result = s.connect_ex(('127.0.0.1', port))
                 if result == 0:
                     print(f"🔍 [TEST] Backend detected on port {port}")
                     return port
